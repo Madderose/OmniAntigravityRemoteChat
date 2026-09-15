@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-15` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P2 (Normal / Performance & Empreinte Mémoire)` |
 | **Catégorie** | `PERF` |
 | **Fichier(s) Concerné(s)` | `src/server.js:4600-4640`, `src/state.js` |
@@ -68,3 +68,4 @@ function logServerEvent(level, message, meta) {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Audit de l'observabilité et rédaction du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

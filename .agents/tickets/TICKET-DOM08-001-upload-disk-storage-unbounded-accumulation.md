@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-08` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P2 (Normal / Rétention & Saturation Disque)` |
 | **Catégorie** | `TECH_DEBT` |
 | **Fichier(s) Concerné(s)` | `src/utils/workspace.js:356-445` |
@@ -69,3 +69,4 @@ await fsp.writeFile(absolutePath, buffer);
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Analyse de stockage et rédaction du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

@@ -31,6 +31,12 @@ let botAvailable = false;
 /** @type {number[]} */
 const rateLimitWindow = [];
 
+/** FIFO queue for rate-limited notifications */
+/** @type {Array<{message: string, options: any}>} */
+const notificationQueue = [];
+/** @type {NodeJS.Timeout | null} */
+let queueDrainTimer = null;
+
 /** Message threading: type → { messageId, timestamp } */
 const threads = new Map();
 
@@ -169,6 +175,22 @@ export async function sendTelegramNotification(message, options = {}) {
     return sendViaWebhook(message);
 }
 
+function scheduleQueueDrain() {
+    if (queueDrainTimer || notificationQueue.length === 0) return;
+    queueDrainTimer = setTimeout(async () => {
+        queueDrainTimer = null;
+        if (notificationQueue.length > 0 && !isRateLimited()) {
+            const next = notificationQueue.shift();
+            if (next && botAvailable && bot) {
+                await sendViaBotApi(next.message, next.options);
+            }
+        }
+        if (notificationQueue.length > 0) {
+            scheduleQueueDrain();
+        }
+    }, 1000);
+}
+
 /**
  * Send via the full bot API with threading and inline keyboards.
  * @param {string} message
@@ -176,7 +198,11 @@ export async function sendTelegramNotification(message, options = {}) {
  */
 async function sendViaBotApi(message, options = {}) {
     if (isRateLimited()) {
-        console.log('[Telegram] Rate limited, skipping message');
+        console.log('[Telegram] Rate limited, queueing message for delayed delivery');
+        if (notificationQueue.length < 50) {
+            notificationQueue.push({ message, options });
+            scheduleQueueDrain();
+        }
         return false;
     }
 
@@ -726,6 +752,11 @@ export function getNotificationToggles() {
  * Gracefully stop the bot polling.
  */
 export async function stopBot() {
+    if (queueDrainTimer) {
+        clearTimeout(queueDrainTimer);
+        queueDrainTimer = null;
+    }
+    notificationQueue.length = 0;
     if (bot && botAvailable) {
         try {
             await bot.stopPolling();

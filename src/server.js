@@ -110,9 +110,25 @@ const TELEGRAM_CONFIGURED = Boolean(
 );
 
 const serverStartedAt = new Date().toISOString();
-const MAX_SERVER_LOGS = 250;
+const MAX_SERVER_LOGS = 300;
+const MAX_LOG_MESSAGE_LENGTH = 1024;
 /** @type {Array<{level: string, message: string, timestamp: string}>} */
 const serverLogs = [];
+
+/**
+ * Timing-safe string comparison using SHA-256 digests.
+ * Prevents side-channel timing attacks on secret/password validations.
+ *
+ * @param {any} a
+ * @param {any} b
+ * @returns {boolean}
+ */
+export function safeTimingCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const hashA = crypto.createHash('sha256').update(a).digest();
+    const hashB = crypto.createHash('sha256').update(b).digest();
+    return crypto.timingSafeEqual(hashA, hashB);
+}
 const tunnelManagers = {
     cloudflare: new CloudflareTunnelManager(),
     pinggy: new PinggyTunnelManager()
@@ -216,24 +232,31 @@ const screenStreamState = {
  */
 function serializeLogArg(value) {
     if (value instanceof Error) {
-        return value.stack || value.message;
+        const text = value.stack || value.message;
+        return text.length > MAX_LOG_MESSAGE_LENGTH ? text.slice(0, MAX_LOG_MESSAGE_LENGTH) + '… [truncated]' : text;
     }
     if (typeof value === 'string') {
-        return value;
+        return value.length > MAX_LOG_MESSAGE_LENGTH ? value.slice(0, MAX_LOG_MESSAGE_LENGTH) + '… [truncated]' : value;
     }
     try {
-        return JSON.stringify(value);
+        const json = JSON.stringify(value);
+        return json.length > MAX_LOG_MESSAGE_LENGTH ? json.slice(0, MAX_LOG_MESSAGE_LENGTH) + '… [truncated]' : json;
     } catch (_) {
-        return String(value);
+        const text = String(value);
+        return text.length > MAX_LOG_MESSAGE_LENGTH ? text.slice(0, MAX_LOG_MESSAGE_LENGTH) + '… [truncated]' : text;
     }
 }
 
 for (const level of /** @type {const} */ (['log', 'info', 'warn', 'error'])) {
     const original = console[level].bind(console);
     console[level] = (...args) => {
+        let message = args.map(serializeLogArg).join(' ');
+        if (message.length > MAX_LOG_MESSAGE_LENGTH) {
+            message = message.slice(0, MAX_LOG_MESSAGE_LENGTH) + '… [truncated]';
+        }
         serverLogs.push({
             level,
-            message: args.map(serializeLogArg).join(' '),
+            message,
             timestamp: new Date().toISOString()
         });
         if (serverLogs.length > MAX_SERVER_LOGS) {
@@ -417,8 +440,12 @@ function rejectQueuedSuggestion(id) {
     };
 }
 
+const MAX_WS_BUFFERED_AMOUNT = 512 * 1024; // 512 KB
+
 /**
  * Broadcast a JSON payload to connected mobile clients.
+ * Implements backpressure mitigation: skips intermediate frames if client buffer > 512 KB,
+ * and terminates dead/stalled client sockets after 15 seconds of saturation.
  *
  * @param {object} payload
  * @returns {void}
@@ -428,6 +455,16 @@ function broadcast(payload) {
     const serialized = JSON.stringify(payload);
     websocketServer.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
+            if (client.bufferedAmount > MAX_WS_BUFFERED_AMOUNT) {
+                // Backpressure protection: skip intermediate frame
+                if (!client._slowSince) {
+                    client._slowSince = Date.now();
+                } else if (Date.now() - client._slowSince > 15000) {
+                    try { client.terminate(); } catch (_) {}
+                }
+                return;
+            }
+            client._slowSince = null;
             client.send(serialized);
         }
     });
@@ -1277,11 +1314,70 @@ export function isRecentDuplicate(hash) {
     return recentSends.has(hash);
 }
 
+export const MAX_SEND_QUEUE_DEPTH = 5;
+
+export class SendQueueFullError extends Error {
+    /**
+     * @param {string} [message]
+     */
+    constructor(message = 'Send queue depth exceeded') {
+        super(message);
+        this.name = 'SendQueueFullError';
+        this.statusCode = 429;
+    }
+}
+
+export const ACTIVE_PROMPT_TTL_MS = 30_000;
+/** @type {Map<string, number>} hash -> timestamp */
+export const ACTIVE_PROMPT_MAP = new Map();
+
+/**
+ * Check if a prompt hash is currently active/in-flight, automatically evicting entries older than 30s.
+ * @param {string} hash
+ * @returns {boolean}
+ */
+export function isActivePrompt(hash) {
+    const now = Date.now();
+    for (const [k, ts] of ACTIVE_PROMPT_MAP) {
+        if (now - ts > ACTIVE_PROMPT_TTL_MS) {
+            ACTIVE_PROMPT_MAP.delete(k);
+        }
+    }
+    return ACTIVE_PROMPT_MAP.has(hash);
+}
+
+let pendingSendCount = 0;
 let sendLock = Promise.resolve();
+
+/**
+ * Executes a task through an atomic serialized FIFO promise chain.
+ * Rejects with HTTP 429 (SendQueueFullError) when queue depth reaches MAX_SEND_QUEUE_DEPTH (5).
+ *
+ * @template T
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<T | {threw: any}>}
+ */
 export function withSendLock(fn) {
-    const run = sendLock.then(fn, fn);
+    if (pendingSendCount >= MAX_SEND_QUEUE_DEPTH) {
+        const err = new SendQueueFullError(`Send queue depth exceeded (limit: ${MAX_SEND_QUEUE_DEPTH})`);
+        return Promise.resolve({ threw: err });
+    }
+
+    pendingSendCount++;
+    const execute = async () => {
+        try {
+            return await fn();
+        } finally {
+            pendingSendCount = Math.max(0, pendingSendCount - 1);
+        }
+    };
+
+    const run = sendLock.then(execute, execute);
     sendLock = run.then(() => {}, () => {}); // a rejection must never poison the chain
-    return run.catch(err => ({ threw: err }));
+    return run.catch(err => {
+        pendingSendCount = Math.max(0, pendingSendCount - 1);
+        return { threw: err };
+    });
 }
 
 /**
@@ -3385,8 +3481,23 @@ async function createServer() {
         });
     });
 
-    // Initialize session security & token
-    AUTH_TOKEN = hashString(APP_PASSWORD + AUTH_SALT + Date.now().toString());
+    // Initialize session security & token with reboot persistence (Ticket DOM06-002)
+    let salt = AUTH_SALT;
+    if (!salt) {
+        const saltFilePath = join(PROJECT_ROOT, 'data', '.auth_salt');
+        try {
+            if (fs.existsSync(saltFilePath)) {
+                salt = fs.readFileSync(saltFilePath, 'utf8').trim();
+            } else {
+                salt = crypto.randomBytes(32).toString('hex');
+                fs.mkdirSync(dirname(saltFilePath), { recursive: true });
+                fs.writeFileSync(saltFilePath, salt, { encoding: 'utf8', mode: 0o600 });
+            }
+        } catch (_) {
+            salt = 'omni_persistent_salt';
+        }
+    }
+    AUTH_TOKEN = hashString(APP_PASSWORD + salt);
 
     // Check for --launch argument
     if (process.argv.includes('--launch')) {
@@ -3430,7 +3541,7 @@ async function createServer() {
         }
 
         // Magic Link / QR Code Auto-Login
-        if (req.query.key === APP_PASSWORD) {
+        if (typeof req.query.key === 'string' && safeTimingCompare(req.query.key, APP_PASSWORD)) {
             res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
                 httpOnly: true,
                 signed: true,
@@ -3477,8 +3588,8 @@ async function createServer() {
 
     // Login endpoint
     app.post('/login', (req, res) => {
-        const { password } = req.body;
-        if (password === APP_PASSWORD) {
+        const { password } = req.body || {};
+        if (safeTimingCompare(password, APP_PASSWORD)) {
             res.cookie(AUTH_COOKIE_NAME, AUTH_TOKEN, {
                 httpOnly: true,
                 signed: true,
@@ -3654,7 +3765,13 @@ async function createServer() {
 
     // Respond to an interactive action (command, question, plan)
     app.post('/api/action/respond', async (req, res) => {
-        const { actionId, type, decision, selectedOptions, writeInText, feedback, comment } = req.body || {};
+        const { actionId, type, decision, selectedOptions, writeInText, feedback, comment, optionIndex } = req.body || {};
+        if (optionIndex !== undefined && optionIndex !== null) {
+            const parsed = Number(optionIndex);
+            if (!Number.isInteger(parsed) || parsed < 0) {
+                return res.status(400).json({ error: 'Invalid optionIndex: must be a non-negative integer' });
+            }
+        }
         if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
 
         if (actionId) {
@@ -3765,7 +3882,13 @@ async function createServer() {
 
     // Interact with pending actions (Accept/Reject legacy fallback)
     app.post('/api/interact-action', async (req, res) => {
-        const { action } = req.body;
+        const { action, optionIndex } = req.body || {};
+        if (optionIndex !== undefined && optionIndex !== null) {
+            const parsed = Number(optionIndex);
+            if (!Number.isInteger(parsed) || parsed < 0) {
+                return res.status(400).json({ error: 'Invalid optionIndex: must be a non-negative integer' });
+            }
+        }
         if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
         const result = await completePendingAction(cdpConnection, action);
         if (result.success) {
@@ -3996,42 +4119,65 @@ async function createServer() {
 
         const msgHash = sendHash(message);
 
-        const outcome = await withSendLock(async () => {
-            if (isRecentDuplicate(msgHash)) {
-                console.log(`[dedupe] suppressed duplicate /send within ${SEND_DEDUPE_MS / 1000}s (hash ${msgHash})`);
-                return { deduped: true };
-            }
+        // Guard against duplicate concurrent in-flight submissions (double-tap mobile clicks)
+        if (isActivePrompt(msgHash)) {
+            return res.status(409).json({
+                success: false,
+                error: 'Conflict: prompt is already in-flight',
+                hash: msgHash
+            });
+        }
 
-            // Inject message with busy backoff if the editor is currently working
-            let result;
-            for (let i = 0; ; i++) {
-                result = await injectMessage(cdpConnection, message, { checkBusy: true });
-                if (result.ok !== false || result.reason !== 'busy' || i >= SEND_BACKOFF_MS.length) break;
-                console.log(`[backoff] editor busy — retry ${i + 1}/${SEND_BACKOFF_MS.length} in ${SEND_BACKOFF_MS[i]}ms`);
-                await new Promise(r => setTimeout(r, SEND_BACKOFF_MS[i]));
-            }
+        ACTIVE_PROMPT_MAP.set(msgHash, Date.now());
+        let outcome;
+        try {
+            outcome = await withSendLock(async () => {
+                if (isRecentDuplicate(msgHash)) {
+                    console.log(`[dedupe] suppressed duplicate /send within ${SEND_DEDUPE_MS / 1000}s (hash ${msgHash})`);
+                    return { deduped: true };
+                }
 
-            // If still busy after backoffs, try once without checkBusy so it queues as normal
-            if (!result.ok && result.reason === 'busy') {
-                result = await injectMessage(cdpConnection, message, { checkBusy: false });
-            }
+                // Inject message with busy backoff if the editor is currently working
+                let result;
+                for (let i = 0; ; i++) {
+                    result = await injectMessage(cdpConnection, message, { checkBusy: true });
+                    if (result.ok !== false || result.reason !== 'busy' || i >= SEND_BACKOFF_MS.length) break;
+                    console.log(`[backoff] editor busy — retry ${i + 1}/${SEND_BACKOFF_MS.length} in ${SEND_BACKOFF_MS[i]}ms`);
+                    await new Promise(r => setTimeout(r, SEND_BACKOFF_MS[i]));
+                }
 
-            // Method 2 fallback check (if primary tab returned editor_not_found)
-            if (!result.ok && result.error === 'editor_not_found') {
-                console.log('[cdp] editor_not_found on primary tab — scanning all tabs (method 2)');
-                result = await injectMessageAnyTab(message);
-            }
+                // If still busy after backoffs, try once without checkBusy so it queues as normal
+                if (!result.ok && result.reason === 'busy') {
+                    result = await injectMessage(cdpConnection, message, { checkBusy: false });
+                }
 
-            // Only a successful transmission opens a deduplication window
-            if (result.ok !== false) {
-                recentSends.set(msgHash, Date.now());
-            }
+                // Method 2 fallback check (if primary tab returned editor_not_found)
+                if (!result.ok && result.error === 'editor_not_found') {
+                    console.log('[cdp] editor_not_found on primary tab — scanning all tabs (method 2)');
+                    result = await injectMessageAnyTab(message);
+                }
 
-            return { result };
-        });
+                // Only a successful transmission opens a deduplication window
+                if (result.ok !== false) {
+                    recentSends.set(msgHash, Date.now());
+                }
+
+                return { result };
+            });
+        } finally {
+            // Guaranteed cleanup on completion or transport error
+            ACTIVE_PROMPT_MAP.delete(msgHash);
+        }
 
         if (outcome.threw) {
             const e = outcome.threw;
+            if (e?.statusCode === 429 || e?.name === 'SendQueueFullError') {
+                return res.status(429).json({
+                    success: false,
+                    error: 'Too Many Requests: send queue full',
+                    statusCode: 429
+                });
+            }
             console.error(`[send] injection threw — answering 500 rather than hanging the caller: ${e?.stack || e}`);
             return res.status(500).json({
                 success: false,
@@ -5066,6 +5212,203 @@ async function createServer() {
         });
     });
 
+    // CDP & Window Management Endpoints (moved into createServer() for unified testability - Ticket DOM01-002)
+    // Remote Click
+    app.post('/remote-click', async (req, res) => {
+        const { selector, index, textContent, omniIndex } = req.body;
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await clickElement(cdpConnection, { selector, index, textContent, omniIndex });
+        res.json(result);
+    });
+
+    // Multi-Window: List all available CDP targets
+    app.get('/cdp-targets', async (req, res) => {
+        try {
+            availableTargets = await discoverAllCDP();
+            if (!activeTargetId && availableTargets.length > 0) {
+                const currentMatch = cdpConnection?.ws?.url ? availableTargets.find(t => t.wsUrl === cdpConnection.ws.url) : null;
+                activeTargetId = currentMatch ? currentMatch.id : availableTargets[0].id;
+            }
+        } catch (_) {}
+        res.json({
+            targets: availableTargets,
+            activeTarget: activeTargetId,
+            connected: !!cdpConnection
+        });
+    });
+
+    // Multi-Window: Switch to a different CDP target
+    app.post('/select-target', async (req, res) => {
+        const { targetId } = req.body;
+        if (!targetId) return res.status(400).json({ error: 'targetId required' });
+
+        // Refresh available targets in case new windows opened
+        if (!availableTargets.some(t => t.id === targetId)) {
+            try {
+                availableTargets = await discoverAllCDP();
+            } catch (_) {}
+        }
+
+        const target = availableTargets.find(t => t.id === targetId);
+        if (!target) return res.status(404).json({ error: 'Target not found. Refresh targets.' });
+
+        try {
+            // Close existing connection
+            if (cdpConnection?.ws) {
+                await stopScreencast();
+                cdpConnection.ws.close();
+                cdpConnection = null;
+            }
+
+            console.log(`🔀 Switching to target: ${target.title} (port ${target.port})`);
+            cdpConnection = await connectCDP(target.wsUrl);
+            activeTargetId = targetId;
+            lastSnapshot = null;
+            lastSnapshotHash = null;
+            console.log(`✅ Connected to: ${target.title}`);
+            res.json({ success: true, target: target.title });
+        } catch (e) { const err = /** @type {Error} */ (e);
+            res.status(500).json({ error: `Failed to connect: ${err.message}` });
+        }
+    });
+
+    // Remote Scroll - sync phone scroll to desktop
+    app.post('/remote-scroll', async (req, res) => {
+        const { scrollTop, scrollPercent } = req.body;
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await remoteScroll(cdpConnection, { scrollTop, scrollPercent });
+        res.json(result);
+    });
+
+    // Get App State
+    app.get('/app-state', async (req, res) => {
+        if (!cdpConnection) return res.json({ mode: 'Unknown', model: 'Unknown' });
+        const result = await getAppState(cdpConnection);
+        res.json(result);
+    });
+
+    // Start New Chat
+    app.post('/new-chat', async (req, res) => {
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await startNewChat(cdpConnection);
+        if (result.success) {
+            sessionStats.reset('new-chat');
+            sessionStats.logAction('new_chat_started');
+            aiSupervisor.clearAssistHistory();
+        }
+        res.json(result);
+    });
+
+    // Get Chat History
+    app.get('/chat-history', async (req, res) => {
+        if (!cdpConnection) return res.json({ error: 'CDP disconnected', chats: [] });
+        const result = await getChatHistory(cdpConnection);
+        res.json(result);
+    });
+
+    // Select a Chat
+    app.post('/select-chat', async (req, res) => {
+        const { title, chatId, id, workspace } = req.body;
+        const target = title || chatId || id;
+        if (!target) return res.status(400).json({ error: 'Chat title or ID required' });
+
+        // If the chat belongs to a workspace with an already open IDE window, switch to it automatically!
+        let switchedTarget = null;
+        if (workspace) {
+            const normWs = workspace.toLowerCase().split('/').filter(Boolean).pop()?.replace(/[^a-z0-9]/g, '') || '';
+            if (normWs && availableTargets && availableTargets.length > 1) {
+                const matchTarget = availableTargets.find(t => {
+                    const normTitle = (t.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                    return normTitle.includes(normWs) || normWs.includes(normTitle);
+                });
+
+                if (matchTarget && matchTarget.id !== activeTargetId) {
+                    try {
+                        if (cdpConnection?.ws) {
+                            await stopScreencast();
+                            cdpConnection.ws.close();
+                            cdpConnection = null;
+                        }
+                        console.log(`🔀 Auto-switching window to match conversation workspace: ${matchTarget.title}`);
+                        cdpConnection = await connectCDP(matchTarget.wsUrl);
+                        activeTargetId = matchTarget.id;
+                        switchedTarget = matchTarget.title;
+                        broadcast({
+                            type: 'cdp_status',
+                            status: 'connected',
+                            targetId: matchTarget.id,
+                            targetTitle: matchTarget.title
+                        });
+                    } catch (swErr) {
+                        console.warn('Auto target switch failed, continuing with current window:', swErr.message);
+                    }
+                }
+            }
+        }
+
+        if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
+        const result = await selectChat(cdpConnection, title, chatId || id);
+        if (!result.success) {
+            return res.status(404).json(result);
+        }
+
+        // Invalidate stale snapshot caches immediately
+        lastSnapshot = null;
+        lastSnapshotHash = null;
+
+        // Immediately capture the fresh snapshot from CDP
+        try {
+            const freshSnapshot = await captureSnapshot(cdpConnection);
+            if (freshSnapshot && !freshSnapshot.error) {
+                lastSnapshot = freshSnapshot;
+                lastSnapshotHash = hashString(freshSnapshot.html);
+                state.setLastSnapshot(freshSnapshot);
+
+                // Broadcast snapshot update to all connected WebSocket clients
+                broadcast({
+                    type: 'snapshot_update',
+                    agentActivity: freshSnapshot.agentActivity || 'Idle',
+                    isGenerating: Boolean(freshSnapshot.isGenerating),
+                    timestamp: new Date().toISOString()
+                });
+
+                return res.json({
+                    ...result,
+                    switchedTarget,
+                    snapshot: {
+                        ...freshSnapshot,
+                        agentActivity: freshSnapshot.agentActivity || 'Idle',
+                        pendingAction: currentPendingAction
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('Post-selectChat snapshot capture error:', err);
+        }
+
+        res.json({ ...result, switchedTarget });
+    });
+
+    // Check if Chat is Open
+    app.get('/chat-status', async (req, res) => {
+        if (!cdpConnection) return res.json({ hasChat: false, hasMessages: false, editorFound: false });
+        const result = await hasChatOpen(cdpConnection);
+        res.json(result);
+    });
+
+    // Launch a new window
+    app.post('/api/launch-window', async (req, res) => {
+        try {
+            const newPort = await launchAntigravity();
+            // We don't automatically connect here; the polling loop will see it 
+            // and the user can select it via the UI context menu.
+            res.json({ success: true, port: newPort });
+        } catch (e) { const err = /** @type {Error} */ (e);
+            console.error('Failed to launch new window:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     return { server, wss, app, hasSSL };
 }
 
@@ -5083,202 +5426,6 @@ async function main() {
 
         // Start background polling (it will now handle reconnections)
         startPolling(wss);
-
-        // Remote Click
-        app.post('/remote-click', async (req, res) => {
-            const { selector, index, textContent, omniIndex } = req.body;
-            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
-            const result = await clickElement(cdpConnection, { selector, index, textContent, omniIndex });
-            res.json(result);
-        });
-
-        // Multi-Window: List all available CDP targets
-        app.get('/cdp-targets', async (req, res) => {
-            try {
-                availableTargets = await discoverAllCDP();
-                if (!activeTargetId && availableTargets.length > 0) {
-                    const currentMatch = cdpConnection?.ws?.url ? availableTargets.find(t => t.wsUrl === cdpConnection.ws.url) : null;
-                    activeTargetId = currentMatch ? currentMatch.id : availableTargets[0].id;
-                }
-            } catch (_) {}
-            res.json({
-                targets: availableTargets,
-                activeTarget: activeTargetId,
-                connected: !!cdpConnection
-            });
-        });
-
-        // Multi-Window: Switch to a different CDP target
-        app.post('/select-target', async (req, res) => {
-            const { targetId } = req.body;
-            if (!targetId) return res.status(400).json({ error: 'targetId required' });
-
-            // Refresh available targets in case new windows opened
-            if (!availableTargets.some(t => t.id === targetId)) {
-                try {
-                    availableTargets = await discoverAllCDP();
-                } catch (_) {}
-            }
-
-            const target = availableTargets.find(t => t.id === targetId);
-            if (!target) return res.status(404).json({ error: 'Target not found. Refresh targets.' });
-
-            try {
-                // Close existing connection
-                if (cdpConnection?.ws) {
-                    await stopScreencast();
-                    cdpConnection.ws.close();
-                    cdpConnection = null;
-                }
-
-                console.log(`🔀 Switching to target: ${target.title} (port ${target.port})`);
-                cdpConnection = await connectCDP(target.wsUrl);
-                activeTargetId = targetId;
-                lastSnapshot = null;
-                lastSnapshotHash = null;
-                console.log(`✅ Connected to: ${target.title}`);
-                res.json({ success: true, target: target.title });
-            } catch (e) { const err = /** @type {Error} */ (e);
-                res.status(500).json({ error: `Failed to connect: ${err.message}` });
-            }
-        });
-
-        // Remote Scroll - sync phone scroll to desktop
-        app.post('/remote-scroll', async (req, res) => {
-            const { scrollTop, scrollPercent } = req.body;
-            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
-            const result = await remoteScroll(cdpConnection, { scrollTop, scrollPercent });
-            res.json(result);
-        });
-
-        // Get App State
-        app.get('/app-state', async (req, res) => {
-            if (!cdpConnection) return res.json({ mode: 'Unknown', model: 'Unknown' });
-            const result = await getAppState(cdpConnection);
-            res.json(result);
-        });
-
-        // Start New Chat
-        app.post('/new-chat', async (req, res) => {
-            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
-            const result = await startNewChat(cdpConnection);
-            if (result.success) {
-                sessionStats.reset('new-chat');
-                sessionStats.logAction('new_chat_started');
-                aiSupervisor.clearAssistHistory();
-            }
-            res.json(result);
-        });
-
-        // Get Chat History
-        app.get('/chat-history', async (req, res) => {
-            if (!cdpConnection) return res.json({ error: 'CDP disconnected', chats: [] });
-            const result = await getChatHistory(cdpConnection);
-            res.json(result);
-        });
-
-        // Select a Chat
-        app.post('/select-chat', async (req, res) => {
-            const { title, chatId, id, workspace } = req.body;
-            const target = title || chatId || id;
-            if (!target) return res.status(400).json({ error: 'Chat title or ID required' });
-
-            // If the chat belongs to a workspace with an already open IDE window, switch to it automatically!
-            let switchedTarget = null;
-            if (workspace) {
-                const normWs = workspace.toLowerCase().split('/').filter(Boolean).pop()?.replace(/[^a-z0-9]/g, '') || '';
-                if (normWs && availableTargets && availableTargets.length > 1) {
-                    const matchTarget = availableTargets.find(t => {
-                        const normTitle = (t.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                        return normTitle.includes(normWs) || normWs.includes(normTitle);
-                    });
-
-                    if (matchTarget && matchTarget.id !== activeTargetId) {
-                        try {
-                            if (cdpConnection?.ws) {
-                                await stopScreencast();
-                                cdpConnection.ws.close();
-                                cdpConnection = null;
-                            }
-                            console.log(`🔀 Auto-switching window to match conversation workspace: ${matchTarget.title}`);
-                            cdpConnection = await connectCDP(matchTarget.wsUrl);
-                            activeTargetId = matchTarget.id;
-                            switchedTarget = matchTarget.title;
-                            broadcast({
-                                type: 'cdp_status',
-                                status: 'connected',
-                                targetId: matchTarget.id,
-                                targetTitle: matchTarget.title
-                            });
-                        } catch (swErr) {
-                            console.warn('Auto target switch failed, continuing with current window:', swErr.message);
-                        }
-                    }
-                }
-            }
-
-            if (!cdpConnection) return res.status(503).json({ error: 'CDP disconnected' });
-            const result = await selectChat(cdpConnection, title, chatId || id);
-            if (!result.success) {
-                return res.status(404).json(result);
-            }
-
-            // Invalidate stale snapshot caches immediately
-            lastSnapshot = null;
-            lastSnapshotHash = null;
-
-            // Immediately capture the fresh snapshot from CDP
-            try {
-                const freshSnapshot = await captureSnapshot(cdpConnection);
-                if (freshSnapshot && !freshSnapshot.error) {
-                    lastSnapshot = freshSnapshot;
-                    lastSnapshotHash = hashString(freshSnapshot.html);
-                    state.setLastSnapshot(freshSnapshot);
-
-                    // Broadcast snapshot update to all connected WebSocket clients
-                    broadcast({
-                        type: 'snapshot_update',
-                        agentActivity: freshSnapshot.agentActivity || 'Idle',
-                        isGenerating: Boolean(freshSnapshot.isGenerating),
-                        timestamp: new Date().toISOString()
-                    });
-
-                    return res.json({
-                        ...result,
-                        switchedTarget,
-                        snapshot: {
-                            ...freshSnapshot,
-                            agentActivity: freshSnapshot.agentActivity || 'Idle',
-                            pendingAction: currentPendingAction
-                        }
-                    });
-                }
-            } catch (err) {
-                console.warn('Post-selectChat snapshot capture error:', err);
-            }
-
-            res.json({ ...result, switchedTarget });
-        });
-
-        // Check if Chat is Open
-        app.get('/chat-status', async (req, res) => {
-            if (!cdpConnection) return res.json({ hasChat: false, hasMessages: false, editorFound: false });
-            const result = await hasChatOpen(cdpConnection);
-            res.json(result);
-        });
-
-        // Launch a new window
-        app.post('/api/launch-window', async (req, res) => {
-            try {
-                const newPort = await launchAntigravity();
-                // We don't automatically connect here; the polling loop will see it 
-                // and the user can select it via the UI context menu.
-                res.json({ success: true, port: newPort });
-            } catch (e) { const err = /** @type {Error} */ (e);
-                console.error('Failed to launch new window:', err);
-                res.status(500).json({ error: err.message });
-            }
-        });
 
         // Kill any existing process on the port before starting
         await killPortProcess(SERVER_PORT);

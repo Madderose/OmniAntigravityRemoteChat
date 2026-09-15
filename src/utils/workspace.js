@@ -63,6 +63,45 @@ export function resolveWorkspacePath(inputPath = '.') {
         throw new Error('Requested path escapes the configured workspace root');
     }
 
+    let realRoot = WORKSPACE_ROOT;
+    try {
+        realRoot = fs.realpathSync(WORKSPACE_ROOT);
+    } catch {
+        realRoot = WORKSPACE_ROOT;
+    }
+    const realRootWithSep = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`;
+
+    if (fs.existsSync(absolute)) {
+        try {
+            const realAbsolute = fs.realpathSync(absolute);
+            if (realAbsolute !== realRoot && !realAbsolute.startsWith(realRootWithSep)) {
+                throw new Error('Requested path escapes the configured workspace root');
+            }
+        } catch (err) {
+            if (err.message === 'Requested path escapes the configured workspace root') {
+                throw err;
+            }
+        }
+    } else {
+        let ancestor = dirname(absolute);
+        while (ancestor && ancestor !== dirname(ancestor)) {
+            if (fs.existsSync(ancestor)) {
+                try {
+                    const realAncestor = fs.realpathSync(ancestor);
+                    if (realAncestor !== realRoot && !realAncestor.startsWith(realRootWithSep)) {
+                        throw new Error('Requested path escapes the configured workspace root');
+                    }
+                } catch (err) {
+                    if (err.message === 'Requested path escapes the configured workspace root') {
+                        throw err;
+                    }
+                }
+                break;
+            }
+            ancestor = dirname(ancestor);
+        }
+    }
+
     const relativePath = absolute === WORKSPACE_ROOT ? '.' : relative(WORKSPACE_ROOT, absolute) || '.';
     return { absolute, relativePath };
 }
@@ -376,6 +415,8 @@ export async function saveUploadedImage(input) {
     const absolutePath = join(UPLOADS_DIR, fileName);
     await fsp.writeFile(absolutePath, buffer);
 
+    pruneUploadsDirectory().catch(() => {});
+
     return {
         fileName,
         absolutePath,
@@ -441,6 +482,8 @@ export async function saveUploadedAudio(input) {
 
     const durationSeconds = Number(input.durationSeconds) > 0 ? Number(input.durationSeconds) : 0;
 
+    pruneUploadsDirectory().catch(() => {});
+
     return {
         fileName,
         absolutePath,
@@ -450,6 +493,75 @@ export async function saveUploadedAudio(input) {
         dataUrl: `data:${rawMime};base64,${input.data}`,
         buffer
     };
+}
+
+/**
+ * Prune uploads directory according to max age and total size policies.
+ *
+ * @param {object} [options]
+ * @param {number} [options.maxAgeDays=7]
+ * @param {number} [options.maxTotalBytes=500 * 1024 * 1024]
+ * @returns {Promise<{deletedCount: number, deletedBytes: number}>}
+ */
+export async function pruneUploadsDirectory({ maxAgeDays = 7, maxTotalBytes = 500 * 1024 * 1024 } = {}) {
+    await ensureWorkspaceData();
+
+    let entries;
+    try {
+        entries = await fsp.readdir(UPLOADS_DIR, { withFileTypes: true });
+    } catch {
+        return { deletedCount: 0, deletedBytes: 0 };
+    }
+
+    const now = Date.now();
+    const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+    let deletedCount = 0;
+    let deletedBytes = 0;
+
+    /** @type {Array<{name: string, path: string, size: number, mtimeMs: number}>} */
+    const files = [];
+
+    for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const filePath = join(UPLOADS_DIR, entry.name);
+        try {
+            const stat = await fsp.stat(filePath);
+            const ageMs = now - stat.mtimeMs;
+            if (ageMs > maxAgeMs) {
+                await fsp.unlink(filePath);
+                deletedCount++;
+                deletedBytes += stat.size;
+            } else {
+                files.push({
+                    name: entry.name,
+                    path: filePath,
+                    size: stat.size,
+                    mtimeMs: stat.mtimeMs
+                });
+            }
+        } catch {
+            // Ignore concurrent deletion
+        }
+    }
+
+    // Sort surviving files oldest first for FIFO pruning if size exceeds limit
+    files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+    let totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    while (totalBytes > maxTotalBytes && files.length > 0) {
+        const oldest = files.shift();
+        if (!oldest) break;
+        try {
+            await fsp.unlink(oldest.path);
+            deletedCount++;
+            deletedBytes += oldest.size;
+            totalBytes -= oldest.size;
+        } catch {
+            // Ignore concurrent deletion
+        }
+    }
+
+    return { deletedCount, deletedBytes };
 }
 
 /**
@@ -528,6 +640,7 @@ export class TerminalManager extends EventEmitter {
         const args = process.platform === 'win32' ? ['/d', '/s', '/c', this.command] : ['-lc', this.command];
         this.process = spawn(shell, args, {
             cwd: WORKSPACE_ROOT,
+            detached: process.platform !== 'win32',
             env: { ...process.env, FORCE_COLOR: '0' }
         });
 
@@ -560,7 +673,26 @@ export class TerminalManager extends EventEmitter {
             return { success: true };
         }
 
-        this.process.kill('SIGTERM');
+        const pid = this.process.pid;
+        const proc = this.process;
+        try {
+            if (process.platform === 'win32') {
+                if (pid) {
+                    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => {});
+                }
+            } else if (pid) {
+                try {
+                    process.kill(-pid, 'SIGTERM');
+                } catch (_) {
+                    proc.kill('SIGTERM');
+                }
+            } else {
+                proc.kill('SIGTERM');
+            }
+        } catch (_) {
+            // Process may already be dead
+        }
+
         this.pushLog('system', 'Termination requested by mobile client');
         return { success: true };
     }

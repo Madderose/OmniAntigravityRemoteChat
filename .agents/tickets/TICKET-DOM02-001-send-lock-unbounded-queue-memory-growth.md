@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-02` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Concurrence & Saturation)` |
 | **Catégorie** | `CONCURRENCY` |
 | **Fichier(s) Concerné(s)` | `src/server.js:1240-1285` |
@@ -82,3 +82,4 @@ export function withSendLock(operation) {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Analyse de concurrence et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

@@ -64,6 +64,16 @@ export class PinggyTunnelManager extends EventEmitter {
         };
     }
 
+    static async cleanupOrphans() {
+        try {
+            if (process.platform === 'win32') {
+                spawn('taskkill', ['/F', '/IM', 'ssh.exe'], { stdio: 'ignore' });
+            } else {
+                spawn('pkill', ['-f', 'ssh.*a.pinggy.io'], { stdio: 'ignore' });
+            }
+        } catch (_) {}
+    }
+
     /**
      * @param {number} port
      * @param {{tls?: boolean, sniServerName?: string}} [options]
@@ -77,6 +87,8 @@ export class PinggyTunnelManager extends EventEmitter {
         if (this.process) {
             await this.stop();
         }
+
+        await PinggyTunnelManager.cleanupOrphans();
 
         this.url = '';
         this.error = '';
@@ -111,6 +123,13 @@ export class PinggyTunnelManager extends EventEmitter {
         this.process = spawn(DEFAULT_BIN, args, {
             stdio: ['pipe', 'pipe', 'pipe']
         });
+
+        const onProcessExit = () => {
+            if (this.process) {
+                try { this.process.kill('SIGTERM'); } catch (_) {}
+            }
+        };
+        process.once('exit', onProcessExit);
 
         return new Promise((resolvePromise, rejectPromise) => {
             let settled = false;

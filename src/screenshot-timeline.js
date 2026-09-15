@@ -109,6 +109,8 @@ export class ScreenshotTimeline {
         this.lastUpdated = '';
         this.lastError = '';
         this.lastCapturedSnapshotHash = '';
+        this._persistLock = Promise.resolve();
+        this._captureLock = Promise.resolve();
     }
 
     async init() {
@@ -181,11 +183,19 @@ export class ScreenshotTimeline {
     }
 
     async persist() {
-        const payload = {
-            updatedAt: new Date().toISOString(),
-            entries: this.entries
-        };
-        await fs.writeFile(this.indexPath, JSON.stringify(payload, null, 2), 'utf8');
+        const op = (this._persistLock || Promise.resolve())
+            .catch(() => {})
+            .then(async () => {
+                const payload = {
+                    updatedAt: new Date().toISOString(),
+                    entries: this.entries
+                };
+                const tmpPath = `${this.indexPath}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+                await fs.writeFile(tmpPath, JSON.stringify(payload, null, 2), 'utf8');
+                await fs.rename(tmpPath, this.indexPath);
+            });
+        this._persistLock = op;
+        return op;
     }
 
     getSummary() {
@@ -233,7 +243,15 @@ export class ScreenshotTimeline {
         return removed;
     }
 
-    async capture({
+    async capture(options = {}) {
+        const op = (this._captureLock || Promise.resolve())
+            .catch(() => {})
+            .then(() => this._executeCapture(options));
+        this._captureLock = op;
+        return op;
+    }
+
+    async _executeCapture({
         data,
         mimeType = 'image/jpeg',
         reason = 'manual',

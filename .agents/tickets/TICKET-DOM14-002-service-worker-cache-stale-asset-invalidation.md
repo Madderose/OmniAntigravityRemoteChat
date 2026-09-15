@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-14` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P2 (Normal / Mise à Jour & Cache)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `public/sw.js:15-45` |
@@ -68,3 +68,4 @@ Il n'y a pas d'écoute automatique de l'événement `controllerchange` dans `pub
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Audit PWA et création du ticket d'invalidation | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

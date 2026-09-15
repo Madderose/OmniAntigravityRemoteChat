@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-09` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P2 (Normal / Robustesse Quota)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/quota-service.js:280-320` |
@@ -65,3 +65,4 @@ Si le processus `language_server` est redémarré ou arrêté par Antigravity au
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Diagnostic de la sonde quota et formalisation du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

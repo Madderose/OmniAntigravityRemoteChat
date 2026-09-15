@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-10` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Concurrence & Intégrité Données)` |
 | **Catégorie** | `CONCURRENCY` |
 | **Fichier(s) Concerné(s)` | `src/screenshot-timeline.js:145-180` |
@@ -66,3 +66,4 @@ await fsp.writeFile(this.manifestPath, JSON.stringify(this.manifest, null, 2));
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Détection du risque d'écritures concurrentes et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

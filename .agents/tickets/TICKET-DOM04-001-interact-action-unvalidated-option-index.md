@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-04` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Robustesse Endpoint)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/server.js:3767-3790` |
@@ -78,3 +78,4 @@ app.post('/api/interact-action', async (req, res) => {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Création du ticket de robustesse endpoint | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

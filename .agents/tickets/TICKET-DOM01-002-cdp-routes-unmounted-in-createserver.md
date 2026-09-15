@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-01` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Architecture & Bogue)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/server.js:5082-5285` |
@@ -91,3 +91,4 @@ app.get('/cdp-targets', async (req, res) => {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Signalement de la dette architecturale et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

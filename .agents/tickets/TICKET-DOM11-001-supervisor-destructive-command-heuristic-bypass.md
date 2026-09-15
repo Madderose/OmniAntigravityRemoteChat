@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-11` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Sécurité Superviseur)` |
 | **Catégorie** | `SECURITY` |
 | **Fichier(s) Concerné(s)` | `src/supervisor.js:320-365` |
@@ -70,3 +70,4 @@ Cependant, des formes obfusquées ou imbriquées courantes sous bash/sh ne sont 
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Diagnostic des règles heuristiques et formalisation du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

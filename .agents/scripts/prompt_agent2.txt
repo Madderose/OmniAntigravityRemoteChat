@@ -1,0 +1,39 @@
+Tu es le Sous-Agent 2 (Pack Beta) d'OmniAntigravityRemoteChat.
+Consulte RESOLUTION_ORCHESTRATION_MASTER.md et les tickets correspondants dans .agents/tickets/.
+Tu es en charge EXCLUSIVE des fichiers suivants :
+- src/server.js
+- src/cdp/connection.js
+- public/sw.js
+- public/js/app.js
+- public/css/layout.css
+
+INTERDICTION FORMELLE : Ne touche à AUCUN autre fichier (notamment pas src/utils/network.js ni workspace.js).
+
+Tâches à réaliser :
+1. TICKET-DOM01-002 (P1 - src/server.js) :
+   Déplacer les routes montées dans main() (/remote-click, /select-target, /remote-scroll, /new-chat, /select-chat, /api/launch-window, /cdp-targets) à l'intérieur de createServer() afin qu'elles soient unifiées et disponibles lors des tests.
+2. TICKET-DOM01-001 (P1 - src/cdp/connection.js) :
+   Dans discoverCDP(), valider la santé de la cible avec un timeout court (ping V8 Runtime.evaluate 1+1) pour ne pas s'accrocher à un port CDP zombie.
+3. TICKET-DOM06-002 (P1 - src/server.js) :
+   Stabiliser AUTH_TOKEN au démarrage sans inclure Date.now() pour préserver la validité des cookies de session mobile au reboot serveur.
+4. TICKET-DOM06-003 (P1 - src/server.js) :
+   Dans POST /login, utiliser crypto.timingSafeEqual sur les hashs SHA-256 du mot de passe pour éliminer les risques d'attaques par timing.
+5. TICKET-DOM02-001 (P1 - src/server.js) :
+   Instaurer MAX_SEND_QUEUE_DEPTH = 5 sur withSendLock pour rejeter avec HTTP 429 toute surcharge lors de clics mobiles en rafale.
+6. TICKET-DOM02-002 (P1 - src/server.js) :
+   Ajouter un TTL d'éviction automatique (30 secondes) sur ACTIVE_PROMPT_MAP et garantir le déblocage en cas d'erreur de transport.
+7. TICKET-DOM04-001 (P1 - src/server.js) :
+   Dans POST /api/interact-action, valider strictement que optionIndex est un entier positif valide (sinon renvoyer HTTP 400).
+8. TICKET-DOM05-001 (P1 - src/server.js) :
+   Dans la diffusion WebSocket startSnapshotPolling, vérifier client.bufferedAmount et sauter l'envoi intermédiaire si le tampon dépasse 512 Ko.
+9. TICKET-DOM14-001 (P1 - public/js/app.js & public/css/layout.css) :
+   Ajuster les écouteurs visualViewport pour compenser le décalage du clavier virtuel mobile et éviter le masquage de l'input de saisie.
+10. TICKET-DOM14-002 (P2 - public/sw.js) :
+    Ajouter self.skipWaiting() à l'installation du service worker pour une invalidation fluide du cache PWA.
+11. TICKET-DOM15-001 (P2 - src/server.js) :
+    Abaisser la limite de serverLogs à 300 entrées et tronquer les messages volumineux pour maîtriser l'empreinte mémoire.
+
+Validation ciblée :
+Exécute : npx vitest run test/unit/send-lock.test.js test/unit/action-decision.test.js test/unit/mobile-viewport.test.js test/unit/config.test.js
+Vérifie que tous tes tests passent à 100%.
+Mets à jour les tickets traités dans .agents/tickets/ en passant leur statut à RESOLVED et en renseignant la section 6.

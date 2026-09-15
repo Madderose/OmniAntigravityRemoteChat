@@ -225,10 +225,67 @@ export function detectPendingPromptFromHtml(html) {
  * @returns {{safe: boolean, reason: string}}
  */
 export function evaluateCommandHeuristics(commandText) {
-    const sample = commandText.toLowerCase();
+    if (!commandText || typeof commandText !== 'string') {
+        return { safe: false, reason: 'heuristic-unknown-command', riskLevel: 'warning' };
+    }
+
+    // Normalize command text: unescape backslashes, strip empty quotes, collapse spaces
+    const normalized = commandText
+        .replace(/\\([a-zA-Z0-9_.-])/g, '$1')
+        .replace(/["']{2}/g, '')
+        .replace(/(^|[\s;&|`$(])["']([a-zA-Z0-9_.-]+)["'](?=[\s;&|`$)]|$)/g, '$1$2')
+        .trim();
+
+    const sample = normalized.toLowerCase();
+
+    // 1. Check for shell obfuscation, dynamic evaluation, and nested execution
+    const obfuscationPatterns = [
+        /\beval\b/,
+        /\bexec\b/,
+        /\b(?:bash|sh|zsh|dash|ash)\s+-c\b/,
+        /\bbase64\s+(?:-[a-z]*d|--decode)\b/,
+        /\$\([^)]+\)/,
+        /`[^`]+`/
+    ];
+
+    if (obfuscationPatterns.some((pattern) => pattern.test(sample))) {
+        return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 2. Sensitive files and directories barrier
+    const sensitiveTargetPattern = /\b(?:\.env|\.git|node_modules|certs|id_rsa|id_ed25519)\b/i;
+    const destructiveOrModifyingPatterns = [
+        /\b(?:rm|del|unlink|shred|truncate|mv|cp|chmod|chown)\b/,
+        /(?:>|>>|:>|:\s*>)/,
+        /\bsed\s+.*-i/,
+        /\btee\b/
+    ];
+    if (sensitiveTargetPattern.test(sample) && destructiveOrModifyingPatterns.some(p => p.test(sample))) {
+        return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 3. Destructive find and mass-deletion patterns
+    if (/\bfind\b/.test(sample) && (/\b-delete\b/.test(sample) || /\b-exec\b/.test(sample) || /\b-execdir\b/.test(sample))) {
+        return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 4. Normalized removal commands (handles rm, r\m, -r -f, -f -r, -fr, -rf, etc.)
+    if (/\b(?:rm|del|unlink|shred|srm)\b/.test(sample)) {
+        return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 5. Destructive redirection / truncation (e.g. > file, : > file)
+    if (/(?:^|[;&|])\s*(?::\s*)?>\s*\S+/.test(sample) || />\s*\/dev\//.test(sample)) {
+        return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 6. Comprehensive risky patterns
     const riskyPatterns = [
         /\brm\b/,
         /\bdel\b/,
+        /\brmdir\b/,
+        /\bunlink\b/,
+        /\bshred\b/,
         /\bshutdown\b/,
         /\breboot\b/,
         /\bkill\b/,
@@ -245,22 +302,32 @@ export function evaluateCommandHeuristics(commandText) {
         />\s*\/dev\//,
         /\bgit\s+reset\b/,
         /\bgit\s+clean\b/,
+        /\bgit\s+restore\b/,
+        /\bgit\s+checkout\s+--\b/,
+        /\bgit\s+branch\s+-[dD]\b/,
         /\bgit\s+force-push\b/,
         /\bgit\s+push\s+--force\b/,
+        /\bgit\s+push\s+.*-f\b/,
         /\bdrop\s+table\b/,
+        /\bdrop\s+database\b/,
         /\bdd\s+if=/,
         /\btruncate\b/,
         /\bmkswap\b/,
         /\bswapon\b/,
         /\biptables\b/,
         /\bsystemctl\s+(stop|disable|mask)\b/,
-        /\bdocker\s+(rm|rmi)\b/,
+        /\bdocker\s+(rm|rmi|prune|kill)\b/,
         /\bpip\s+install.*--system\b/,
         /\bnpx?\s+.*\|\s*sh\b/
     ];
 
     if (riskyPatterns.some((pattern) => pattern.test(sample))) {
         return { safe: false, reason: 'heuristic-risky-command', riskLevel: 'critical' };
+    }
+
+    // 7. Output redirection prevents auto-approval as safe
+    if (/(?:>|>>)/.test(sample)) {
+        return { safe: false, reason: 'heuristic-unknown-command', riskLevel: 'warning' };
     }
 
     const safePatterns = [

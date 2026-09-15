@@ -15,7 +15,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Master coordination documents: `AUDIT_ORCHESTRATION_MASTER.md` (dashboard of 15 packages with atomic lock registry) and `AUDIT_LOGIQUE_APPLICATIVE.md` (executive synthesis, risk quadrant, and remediation roadmap).
   - 15 domain audit reports in `.agents/audit_reports/` covering the entire codebase with quantitative scorecards across 6 dimensions.
   - Standardized ticketing system in `.agents/tickets/` with `TICKET_TEMPLATE.md`, `TICKETS_INDEX.md`, and 36 documented anomaly/enhancement tickets.
-- 🧪 **Simulated End-to-End Test Suite** — Added `test/unit/simulated-e2e-workflows.test.js` (16 automated tests) covering LAN auto-auth IP boundaries, workspace symlink confinement, terminal execution lifecycle & orphan termination, `withSendLock` concurrency serialization, and quota service offline resilience.
+- 🧪 **Simulated End-to-End Test Suite** — Added `test/unit/simulated-e2e-workflows.test.js` (20 automated tests) covering LAN auto-auth IP boundaries, workspace symlink confinement, terminal execution lifecycle & orphan termination, `withSendLock` concurrency serialization, and quota service offline resilience.
+
+### Fixed
+- 🔒 **LAN Auto-Auth CIDR Leak Fix** (`TICKET-DOM06-001`, P0) — Replaced naive string prefix matching in `src/utils/network.js` with strict octet-level RFC 1918 CIDR validation (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), blocking accidental auto-authentication bypasses for public IPs (e.g. `172.217.x.x`).
+- 🔒 **Workspace Symlink Escape Prevention** (`TICKET-DOM07-001`, P0) — Reinforced `resolveWorkspacePath()` in `src/utils/workspace.js` using `fs.realpathSync` to ensure resolved symlinks remain strictly jailed inside `WORKSPACE_ROOT`.
+- 🛡️ **Reboot-Persistent Mobile Sessions** (`TICKET-DOM06-002`, P1) — Persisted `AUTH_SALT` to `data/.auth_salt` (0600) so mobile client auth tokens remain valid across server restarts without forcing re-login.
+- 🛡️ **Timing-Attack Protection** (`TICKET-DOM06-003`, P1) — Introduced `safeTimingCompare()` using SHA-256 digests and `crypto.timingSafeEqual()` for constant-time password and magic token validation in `src/server.js`.
+- 🛡️ **Terminal Orphan & Zombie Process Cleanup** (`TICKET-DOM07-002`, P1) — Configured `detached: true` and process-group termination (`process.kill(-pid, 'SIGTERM')` on POSIX and `taskkill /T /F` on Windows) in `TerminalManager.stop()`.
+- 🛡️ **Send Queue Bounding & Concurrency Guard** (`TICKET-DOM02-001`, `TICKET-DOM02-002`, P1) — Implemented `MAX_SEND_QUEUE_DEPTH = 5` returning HTTP 429 when overloaded, and wrapped in-flight tracking in `try/finally` with HTTP 409 double-tap conflict protection.
+- 🛡️ **Stale CDP Target Health Probe** (`TICKET-DOM01-001`, P1) — Added `probeTargetHealth()` fast V8 ping in `src/cdp/connection.js` to eliminate stale/zombie port bindings.
+- 🛡️ **Unified Route Architecture** (`TICKET-DOM01-002`, P1) — Relocated 7 orphan CDP & multi-window endpoints from `main()` into `createServer()` for seamless testability and modularity.
+- 🛡️ **Interactive Action Parameter Validation** (`TICKET-DOM04-001`, P1) — Validated non-negative integer `optionIndex` on `/api/action/respond` and `/api/interact-action` in `src/server.js`.
+- 🛡️ **WebSocket Backpressure Mitigation** (`TICKET-DOM05-001`, P1) — Added bufferedAmount checks (capped at 512 KB) and pruned dead/saturated sockets after 15s saturation.
+- 🛡️ **Supervisor Heuristics Normalization** (`TICKET-DOM11-001`, P1) — Normalized obfuscated commands (`r\m`, dynamic eval, sensitive directory protection `.env`/`.git`) in `src/supervisor.js`.
+- 🛡️ **Screenshot Manifest Concurrency Serialization** (`TICKET-DOM10-001`, P1) — Added atomic `.tmp` + `rename` writes and Promise-chain locking in `ScreenshotTimeline`.
+- 🛡️ **Tunnel Orphan Cleanup** (`TICKET-DOM13-001`, P1) — Added `cleanupOrphans()` and `process.once('exit')` in `scripts/cloudflare-tunnel.js` and `scripts/pinggy-tunnel.js`.
+- 🛡️ **Telegram Notification FIFO Queue** (`TICKET-DOM12-001`, P2) — Enqueued rate-limited notifications into a FIFO queue with automated draining upon rate window expiration.
+- 🛡️ **Uploads Retention & Auto-Purge** (`TICKET-DOM08-001`, P2) — Added `pruneUploadsDirectory()` with age and total size policies (500 MB max) in `src/utils/workspace.js`.
+- 🛡️ **Quota HTTPS Socket Error Catching** (`TICKET-DOM09-001`, P2) — Added socket-level error listeners and synchronous `try/catch` in `src/quota-service.js`.
+- 🛡️ **Admin Log Truncation & Memory Bounding** (`TICKET-DOM15-001`, P2) — Bounded log message length to 1024 chars and capped `serverLogs` to 300 entries in `src/server.js`.
+- 🛡️ **Service Worker Cache Alignment** (`TICKET-DOM14-002`, P2) — Aligned cache name to `omni-antigravity-shell-v1.5.0` in `public/sw.js`.
 
 ## [1.4.1] - 2026-09-05
 

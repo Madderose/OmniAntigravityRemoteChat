@@ -222,54 +222,73 @@ export async function fetchQuotaPayload(port, csrfToken) {
   const payload = JSON.stringify({});
 
   return new Promise((resolve, reject) => {
-    const request = https.request(
-      {
-        hostname: '127.0.0.1',
-        port,
-        method: 'POST',
-        path: API_ENDPOINT,
-        rejectUnauthorized: false,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-          [CSRF_HEADER]: csrfToken,
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    const succeed = (val) => {
+      if (settled) return;
+      settled = true;
+      resolve(val);
+    };
+
+    try {
+      const request = https.request(
+        {
+          hostname: '127.0.0.1',
+          port,
+          method: 'POST',
+          path: API_ENDPOINT,
+          rejectUnauthorized: false,
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            [CSRF_HEADER]: csrfToken,
+          },
         },
-      },
-      (response) => {
-        let body = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => {
-          body += chunk;
-        });
-        response.on('end', () => {
-          if ((response.statusCode || 500) >= 400) {
-            const error = new Error(
-              `Quota request failed (${response.statusCode}): ${body || 'No response body'}`
-            );
-            error.statusCode = response.statusCode;
-            reject(error);
-            return;
-          }
+        (response) => {
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            body += chunk;
+          });
+          response.on('end', () => {
+            if ((response.statusCode || 500) >= 400) {
+              const error = new Error(
+                `Quota request failed (${response.statusCode}): ${body || 'No response body'}`
+              );
+              error.statusCode = response.statusCode;
+              fail(error);
+              return;
+            }
 
-          try {
-            resolve(JSON.parse(body || '{}'));
-          } catch (error) {
-            reject(
-              new Error(
-                `Quota response could not be parsed as JSON: ${error.message}`
-              )
-            );
-          }
-        });
-      }
-    );
+            try {
+              succeed(JSON.parse(body || '{}'));
+            } catch (error) {
+              fail(
+                new Error(
+                  `Quota response could not be parsed as JSON: ${error.message}`
+                )
+              );
+            }
+          });
+        }
+      );
 
-    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      request.destroy(new Error('Quota request timed out'));
-    });
-    request.on('error', reject);
-    request.write(payload);
-    request.end();
+      request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+        request.destroy(new Error('Quota request timed out'));
+      });
+      request.on('socket', (socket) => {
+        socket.on('error', fail);
+      });
+      request.on('error', fail);
+      request.write(payload);
+      request.end();
+    } catch (err) {
+      fail(err);
+    }
   });
 }
 

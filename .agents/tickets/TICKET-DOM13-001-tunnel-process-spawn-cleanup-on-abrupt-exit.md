@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-13` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Gestion de Processus)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `scripts/cloudflare-tunnel.js:75-110`, `scripts/pinggy-tunnel.js:80-120`, `launcher.js:140` |
@@ -67,3 +67,4 @@ this.process = spawn(this.binPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Audit des scripts de tunneling et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

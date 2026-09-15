@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-02` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Fuite Mémoire & Concurrence)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/server.js:1280-1310` |
@@ -66,3 +66,4 @@ Toute tentative ultérieure d'envoyer exactement le même message sera rejetée 
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Audit de concurrence et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

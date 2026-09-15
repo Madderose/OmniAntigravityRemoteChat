@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-14` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Ergonomie Mobile & A11y)` |
 | **Catégorie** | `A11Y` |
 | **Fichier(s) Concerné(s)` | `public/js/app.js:840-890`, `public/css/layout.css` |
@@ -67,3 +67,4 @@ Cependant, la zone de saisie du prompt `#prompt-input` et le conteneur de chat `
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Diagnostic du comportement viewport et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

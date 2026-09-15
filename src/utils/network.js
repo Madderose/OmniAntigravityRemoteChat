@@ -44,23 +44,62 @@ export function getLocalIP() {
  * @returns {boolean}
  */
 export function isLocalRequest(req) {
-    // Check for proxy headers (Cloudflare, ngrok, etc.)
-    if (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-real-ip']) {
+    if (process.env.DISABLE_LAN_AUTH === 'true' || process.env.DISABLE_LAN_AUTH === '1') {
         return false;
     }
 
-    const ip = req.ip || req.socket.remoteAddress || '';
+    // Check for proxy headers (Cloudflare, ngrok, etc.)
+    if (req.headers && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-real-ip'])) {
+        return false;
+    }
 
-    return ip === '127.0.0.1' ||
-        ip === '::1' ||
-        ip === '::ffff:127.0.0.1' ||
-        ip.startsWith('192.168.') ||
-        ip.startsWith('10.') ||
-        ip.startsWith('172.16.') || ip.startsWith('172.17.') ||
-        ip.startsWith('172.18.') || ip.startsWith('172.19.') ||
-        ip.startsWith('172.2') || ip.startsWith('172.3') ||
-        ip.startsWith('::ffff:192.168.') ||
-        ip.startsWith('::ffff:10.');
+    let ip = (req.ip || (req.socket && req.socket.remoteAddress) || '').trim();
+    if (!ip) {
+        return false;
+    }
+
+    // IPv6 localhost
+    if (ip === '::1') {
+        return true;
+    }
+
+    // Normalize IPv4-mapped IPv6 (::ffff:192.168.1.1 -> 192.168.1.1)
+    if (ip.startsWith('::ffff:')) {
+        ip = ip.slice(7);
+    }
+
+    // IPv4 localhost
+    if (ip === '127.0.0.1') {
+        return true;
+    }
+
+    // Strictly validate and parse IPv4 octets per RFC 1918
+    const match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!match) {
+        return false;
+    }
+
+    const parts = match.slice(1).map(Number);
+    if (!parts.every(p => p >= 0 && p <= 255)) {
+        return false;
+    }
+
+    // 10.0.0.0/8
+    if (parts[0] === 10) {
+        return true;
+    }
+
+    // 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) {
+        return true;
+    }
+
+    // 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) {
+        return true;
+    }
+
+    return false;
 }
 
 /**

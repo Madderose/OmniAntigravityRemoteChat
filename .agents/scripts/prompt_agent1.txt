@@ -1,0 +1,37 @@
+Tu es le Sous-Agent 1 (Pack Alpha) d'OmniAntigravityRemoteChat.
+Consulte RESOLUTION_ORCHESTRATION_MASTER.md et les tickets correspondants dans .agents/tickets/.
+Tu es en charge EXCLUSIVE des fichiers suivants :
+- src/utils/network.js
+- src/utils/workspace.js
+- src/supervisor.js
+- src/screenshot-timeline.js
+- src/utils/telegram.js
+- scripts/cloudflare-tunnel.js
+- scripts/pinggy-tunnel.js
+
+INTERDICTION FORMELLE : Ne touche à AUCUN autre fichier (notamment pas src/server.js ni aux fichiers frontend).
+
+Tâches à réaliser :
+1. TICKET-DOM06-001 (P0 - src/utils/network.js) :
+   Corriger isLocalRequest(req) pour parser strictement la RFC 1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16).
+   Ne pas utiliser ip.startsWith('172.2') ni '172.3', mais vérifier les octets (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31). Supporter les adresses IPv4-mapped IPv6 (::ffff:).
+2. TICKET-DOM07-001 (P0 - src/utils/workspace.js) :
+   Dans resolveWorkspacePath(inputPath), résoudre le chemin réel avec fs.realpathSync ou fsp.realpath si la cible existe, pour empêcher toute évasion hors de WORKSPACE_ROOT via des liens symboliques.
+3. TICKET-DOM07-002 (P1 - src/utils/workspace.js) :
+   Dans TerminalManager, spawner le processus avec detached: process.platform !== 'win32'.
+   Dans stop(), tuer l'ensemble du groupe de processus (process.kill(-this.process.pid, 'SIGTERM')) pour éliminer les processus zombies sous Linux/macOS.
+4. TICKET-DOM08-001 (P2 - src/utils/workspace.js) :
+   Ajouter une routine pruneUploadsDirectory({ maxAgeDays = 7, maxTotalBytes = 500 * 1024 * 1024 }) pour purger les anciens fichiers temporaires dans data/uploads/.
+5. TICKET-DOM10-001 (P1 - src/screenshot-timeline.js) :
+   Sérialiser la mise à jour de manifest.json via une écriture sur fichier temporaire (.tmp) suivie d'un renommage atomique fsp.rename.
+6. TICKET-DOM11-001 (P1 - src/supervisor.js) :
+   Normaliser les arguments shell dans les heuristiques de sécurité pour interdire les variantes obfusquées de commandes destructrices (ex: rm -r -f).
+7. TICKET-DOM12-001 (P2 - src/utils/telegram.js) :
+   Remplacer l'abandon silencieux lors du rate-limit par une file d'attente FIFO qui dépile automatiquement les messages.
+8. TICKET-DOM13-001 (P1 - scripts/cloudflare-tunnel.js & scripts/pinggy-tunnel.js) :
+   Ajouter un nettoyage préventif des processus tunnels orphelins résiduels.
+
+Validation ciblée :
+Exécute : npx vitest run test/unit/network.test.js test/unit/supervisor.test.js test/unit/screenshot-timeline.test.js test/unit/telegram.test.js test/unit/upload-media.test.js test/unit/simulated-e2e-workflows.test.js
+Vérifie que tous tes tests passent à 100%.
+Mets à jour les tickets traités dans .agents/tickets/ en passant leur statut à RESOLVED et en renseignant la section 6.

@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-06` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Ergonomie & Persistance Session)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/server.js:3389` |
@@ -73,3 +73,4 @@ AUTH_TOKEN = hashString(APP_PASSWORD + AUTH_SALT + Date.now().toString());
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Identification du problème de persistance de session et ouverture du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

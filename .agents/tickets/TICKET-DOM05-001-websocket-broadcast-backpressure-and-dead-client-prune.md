@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-05` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Performance & Fuite Mémoire)` |
 | **Catégorie** | `PERF` |
 | **Fichier(s) Concerné(s)` | `src/server.js:4980-5020` |
@@ -78,3 +78,4 @@ wss.clients.forEach((client) => {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Analyse de charge WebSocket et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

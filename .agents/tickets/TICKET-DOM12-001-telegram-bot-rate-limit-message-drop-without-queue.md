@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-12` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P2 (Normal / Fiabilité Notifications)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/utils/telegram.js:180-220` |
@@ -76,3 +76,4 @@ if (now - lastMessageTime < rateLimitMs) {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Diagnostic de la perte de notifications et création du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

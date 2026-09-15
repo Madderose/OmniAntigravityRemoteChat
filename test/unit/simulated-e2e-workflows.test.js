@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { isLocalRequest } from '../../src/utils/network.js';
-import { resolveWorkspacePath, terminalManager } from '../../src/utils/workspace.js';
-import { withSendLock } from '../../src/server.js';
+import { resolveWorkspacePath, terminalManager, pruneUploadsDirectory } from '../../src/utils/workspace.js';
+import { withSendLock, safeTimingCompare } from '../../src/server.js';
 import { hashString } from '../../src/utils/hash.js';
 import { quotaService } from '../../src/quota-service.js';
+import { CloudflareTunnelManager } from '../../scripts/cloudflare-tunnel.js';
+import { PinggyTunnelManager } from '../../scripts/pinggy-tunnel.js';
 
 describe('Simulated E2E Workflows & System Robustness Suite', () => {
 
@@ -38,17 +40,17 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
             expect(isLocalRequest({ headers: {}, ip: '93.184.216.34' })).toBe(false);
         });
 
-        it('documente le comportement actuel de la plage 172.16-31 (Ticket TICKET-DOM06-001)', () => {
-            // Plages privées légitimes RFC1918
+        it('confine strictement la plage RFC1918 172.16.0.0/12 et bloque les fuites 172.217/172.32 (Ticket TICKET-DOM06-001)', () => {
+            // Plages privées légitimes RFC1918 (172.16.0.0 -> 172.31.255.255)
             expect(isLocalRequest({ headers: {}, ip: '172.16.0.1' })).toBe(true);
             expect(isLocalRequest({ headers: {}, ip: '172.20.10.5' })).toBe(true);
+            expect(isLocalRequest({ headers: {}, ip: '172.31.255.254' })).toBe(true);
             
-            // Constat documenté par TICKET-DOM06-001 :
-            // Actuellement, ip.startsWith('172.2') autorise par erreur 172.217.x.x (Google)
-            // Ce test formalise la détection de la faille
-            const isVulnerableMatch = isLocalRequest({ headers: {}, ip: '172.217.16.1' });
-            // Le ticket P0 TICKET-DOM06-001 demande de corriger ce comportement pour qu'il renvoie false
-            expect(typeof isVulnerableMatch).toBe('boolean');
+            // Validation de la correction TICKET-DOM06-001 :
+            // Bloque 172.217.x.x (IP publique Google) et 172.32.x.x (hors /12)
+            expect(isLocalRequest({ headers: {}, ip: '172.217.16.1' })).toBe(false);
+            expect(isLocalRequest({ headers: {}, ip: '172.32.0.1' })).toBe(false);
+            expect(isLocalRequest({ headers: {}, ip: '172.15.255.255' })).toBe(false);
         });
     });
 
@@ -204,4 +206,51 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
             expect(Array.isArray(quota.models)).toBe(true);
         });
     });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 7. Domaine 6 : Comparaison Constante en Temps (safeTimingCompare)
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 6 — Protection contre les Attaques Temporelles (safeTimingCompare)', () => {
+
+        it('valide des chaînes strictement identiques et rejette les disparités', () => {
+            expect(safeTimingCompare('MonMotDePasseSecret123', 'MonMotDePasseSecret123')).toBe(true);
+            expect(safeTimingCompare('MonMotDePasseSecret123', 'MonMotDePasseSecret124')).toBe(false);
+            expect(safeTimingCompare('court', 'tresTresLongMotDePasse')).toBe(false);
+        });
+
+        it('gère gracieusement les types invalides ou manquants sans planter', () => {
+            expect(safeTimingCompare(null, 'secret')).toBe(false);
+            expect(safeTimingCompare(undefined, undefined)).toBe(false);
+            expect(safeTimingCompare(12345, 12345)).toBe(false);
+            expect(safeTimingCompare({}, 'secret')).toBe(false);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 8. Domaine 8 : Politique de Rétention des Fichiers Téléversés
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 8 — Auto-purge & Rétention des Uploads (pruneUploadsDirectory)', () => {
+
+        it('exécute l\'analyse et la purge sans lever d\'erreur', async () => {
+            const result = await pruneUploadsDirectory({ maxAgeDays: 30, maxTotalBytes: 1024 * 1024 * 500 });
+            expect(result).toBeDefined();
+            expect(typeof result.deletedCount).toBe('number');
+            expect(typeof result.deletedBytes).toBe('number');
+            expect(result.deletedCount).toBeGreaterThanOrEqual(0);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 9. Domaine 13 : Nettoyage Préalable des Processus Tunnels Orphelins
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 13 — Résilience des Tunnels & Processus Orphelins', () => {
+
+        it('CloudflareTunnelManager et PinggyTunnelManager exposent cleanupOrphans() sans planter', async () => {
+            expect(typeof CloudflareTunnelManager.cleanupOrphans).toBe('function');
+            expect(typeof PinggyTunnelManager.cleanupOrphans).toBe('function');
+            await expect(CloudflareTunnelManager.cleanupOrphans()).resolves.toBeUndefined();
+            await expect(PinggyTunnelManager.cleanupOrphans()).resolves.toBeUndefined();
+        });
+    });
 });
+

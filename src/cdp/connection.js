@@ -11,7 +11,80 @@ import { getJson } from '../utils/network.js';
 import * as state from '../state.js';
 
 /**
+ * Probe a CDP WebSocket endpoint by evaluating 1+1 with a short timeout.
+ * Returns true if the target responds cleanly, false if it times out, errors or closes.
+ *
+ * @param {string} wsUrl
+ * @param {number} [timeoutMs=1500]
+ * @returns {Promise<boolean>}
+ */
+export async function probeTargetHealth(wsUrl, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+        let ws;
+        let timer = null;
+        let settled = false;
+
+        const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            if (ws) {
+                try {
+                    ws.removeAllListeners();
+                    ws.close();
+                } catch (_) {}
+            }
+        };
+
+        const done = (result) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(result);
+        };
+
+        timer = setTimeout(() => {
+            done(false);
+        }, timeoutMs);
+
+        try {
+            ws = new WebSocket(wsUrl);
+            ws.on('open', () => {
+                try {
+                    ws.send(JSON.stringify({
+                        id: 1,
+                        method: 'Runtime.evaluate',
+                        params: { expression: '1+1' }
+                    }));
+                } catch (_) {
+                    done(false);
+                }
+            });
+            ws.on('message', (msg) => {
+                try {
+                    const data = JSON.parse(msg.toString());
+                    if (data.id === 1 && !data.error) {
+                        done(true);
+                    } else if (data.id === 1 && data.error) {
+                        done(false);
+                    }
+                } catch (_) {
+                    done(false);
+                }
+            });
+            ws.on('error', () => {
+                done(false);
+            });
+            ws.on('close', () => {
+                done(false);
+            });
+        } catch (_) {
+            done(false);
+        }
+    });
+}
+
+/**
  * Find a single Antigravity CDP endpoint (first workbench window found).
+ * Validates candidate target health with a fast V8 ping to prevent binding to zombie ports.
  *
  * @returns {Promise<{port: number, url: string}>}
  * @throws {Error} If no CDP target found on any port
@@ -25,15 +98,23 @@ export async function discoverCDP() {
             // Priority 1: Standard Workbench
             const workbench = list.find(t => t.url?.includes('workbench.html') || (t.title && t.title.includes('workbench')));
             if (workbench?.webSocketDebuggerUrl) {
-                console.log('Found Workbench target:', workbench.title);
-                return { port, url: workbench.webSocketDebuggerUrl };
+                const isHealthy = await probeTargetHealth(workbench.webSocketDebuggerUrl);
+                if (isHealthy) {
+                    console.log('Found Workbench target:', workbench.title);
+                    return { port, url: workbench.webSocketDebuggerUrl };
+                }
+                console.warn(`Target on port ${port} (${workbench.title}) failed health probe, trying next...`);
             }
 
             // Priority 2: Jetski/Launchpad (Fallback)
             const jetski = list.find(t => t.url?.includes('jetski') || t.title === 'Launchpad');
             if (jetski?.webSocketDebuggerUrl) {
-                console.log('Found Jetski/Launchpad target:', jetski.title);
-                return { port, url: jetski.webSocketDebuggerUrl };
+                const isHealthy = await probeTargetHealth(jetski.webSocketDebuggerUrl);
+                if (isHealthy) {
+                    console.log('Found Jetski/Launchpad target:', jetski.title);
+                    return { port, url: jetski.webSocketDebuggerUrl };
+                }
+                console.warn(`Jetski target on port ${port} failed health probe, trying next...`);
             }
 
             // Priority 3: Revamped Gemini-based Antigravity (local HTTPS app — title changes per conversation)
@@ -44,8 +125,12 @@ export async function discoverCDP() {
                 t.url?.match(/^https?:\/\/127\.0\.0\.1:\d+/)
             );
             if (gemini?.webSocketDebuggerUrl) {
-                console.log('Found Gemini Antigravity target:', gemini.title || gemini.url);
-                return { port, url: gemini.webSocketDebuggerUrl };
+                const isHealthy = await probeTargetHealth(gemini.webSocketDebuggerUrl);
+                if (isHealthy) {
+                    console.log('Found Gemini Antigravity target:', gemini.title || gemini.url);
+                    return { port, url: gemini.webSocketDebuggerUrl };
+                }
+                console.warn(`Gemini target on port ${port} failed health probe, trying next...`);
             }
         } catch (e) {
             errors.push(`${port}: ${/** @type {Error} */(e).message}`);
@@ -111,6 +196,7 @@ export async function connectCDP(url) {
     /** @type {Array<{id: number, name: string, origin: string}>} */
     const contexts = [];
     /** @type {Map<string, Set<(params: any) => void>>} */
+    const eventListeners = new Map();
     // Single centralized message handler
     ws.on('close', () => {
         for (const [id, { reject, timeoutId }] of pendingCalls.entries()) {

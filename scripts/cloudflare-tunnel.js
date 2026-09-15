@@ -60,6 +60,16 @@ export class CloudflareTunnelManager extends EventEmitter {
         };
     }
 
+    static async cleanupOrphans() {
+        try {
+            if (process.platform === 'win32') {
+                spawn('taskkill', ['/F', '/IM', 'cloudflared.exe'], { stdio: 'ignore' });
+            } else {
+                spawn('pkill', ['-f', 'cloudflared.*tunnel'], { stdio: 'ignore' });
+            }
+        } catch (_) {}
+    }
+
     /**
      * @param {number} port
      * @returns {Promise<string>}
@@ -73,6 +83,8 @@ export class CloudflareTunnelManager extends EventEmitter {
             await this.stop();
         }
 
+        await CloudflareTunnelManager.cleanupOrphans();
+
         this.url = '';
         this.error = '';
         this.startedAt = new Date().toISOString();
@@ -81,6 +93,13 @@ export class CloudflareTunnelManager extends EventEmitter {
         this.process = spawn(DEFAULT_BIN, args, {
             stdio: ['ignore', 'pipe', 'pipe']
         });
+
+        const onProcessExit = () => {
+            if (this.process) {
+                try { this.process.kill('SIGTERM'); } catch (_) {}
+            }
+        };
+        process.once('exit', onProcessExit);
 
         return new Promise((resolvePromise, rejectPromise) => {
             const settleError = (message) => {

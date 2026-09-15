@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-06` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P0 (Bloquant / Sécurité Critique)` |
 | **Catégorie** | `SECURITY` |
 | **Fichier(s) Concerné(s)** | `src/utils/network.js:59-63`, `src/server.js:3428` |
@@ -92,3 +92,4 @@ return ip === '127.0.0.1' ||
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Détection de la vulnérabilité et rédaction du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |

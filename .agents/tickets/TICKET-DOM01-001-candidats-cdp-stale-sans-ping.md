@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-01` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Résilience & Découverte)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/cdp/connection.js:45-80` |
@@ -73,3 +73,4 @@ for (const port of PORTS) {
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Création du ticket lors de l'audit 360° | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Correction appliquée et validée par les suites de tests unitaires et d'intégration | `RESOLVED` |
