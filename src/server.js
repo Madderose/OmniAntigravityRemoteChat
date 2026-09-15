@@ -1144,115 +1144,129 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
         if (!editor) return { ok: false, error: "editor_not_found", domStatus: "attempted" };
 
         const textToInsert = ${safeText};
+        const hasText = textToInsert.length > 0;
 
-        editor.focus();
-        document.execCommand?.("selectAll", false, null);
-        document.execCommand?.("delete", false, null);
+        if (hasText) {
+            editor.focus();
+            document.execCommand?.("selectAll", false, null);
+            document.execCommand?.("delete", false, null);
 
-        let inserted = false;
-        // Priority A: Try native clipboard paste via DataTransfer (Lexical PASTE_COMMAND natively parses multiline paragraphs)
-        try {
-            if (typeof ClipboardEvent === "function" && typeof DataTransfer === "function") {
-                const dt = new DataTransfer();
-                dt.setData("text/plain", textToInsert);
-                const pasteEvent = new ClipboardEvent("paste", {
-                    bubbles: true,
-                    cancelable: true,
-                    clipboardData: dt,
-                    composed: true
-                });
-                inserted = editor.dispatchEvent(pasteEvent);
-            }
-        } catch (_) {}
-
-        // Priority B: If paste event was unhandled or didn't populate text, try document.execCommand
-        if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
-            try { inserted = !!document.execCommand?.("insertText", false, textToInsert); } catch {}
-        }
-
-        // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy
-        if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
-            const hasNewlines = textToInsert.includes("\n");
-            if (hasNewlines) {
-                editor.innerHTML = textToInsert
-                    .split(/\r?\n/)
-                    .map(function(line) {
-                        var safe = line ? line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
-                        return '<p dir="ltr"><span data-lexical-text="true">' + safe + '</span></p>';
-                    })
-                    .join('');
-            } else {
-                editor.textContent = textToInsert;
-            }
-            editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
-            editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
-        }
-
-        // Wait for Lexical / Preact to register input state
-        await new Promise(r => setTimeout(r, 120));
-
-        // Staging check (Lexical input boundary verification)
-        // Credit: Kelvin Tan (@kelverssg)
-        const editorText = editor.innerText || editor.textContent || "";
-        const normalizeForStaging = value => value.replace(/[\s\\\x60]/g, '');
-        const actual = normalizeForStaging(editorText);
-        const expected = normalizeForStaging(textToInsert);
-        const minExpected = Math.floor(expected.length * 0.85);
-        const head = expected.slice(0, Math.min(80, expected.length));
-        const tail = expected.slice(Math.max(0, expected.length - 80));
-        const staged = expected.length === 0
-            || actual.includes(expected)
-            || (actual.length >= minExpected && actual.includes(head) && actual.includes(tail));
-        if (!staged) {
-            return { ok: false, error: "staging_failed", domStatus: "editor_found_unverified" };
-        }
-
-        // Priority 1: Gemini Antigravity "Send message" button inside side panel
-        // Credit: Kelvin Tan (@kelverssg)
-        const box = document.getElementById('antigravity.agentSidePanelInputBox');
-        const geminiSendBtn = (box ? [...box.querySelectorAll('button')] : [...document.querySelectorAll('button')])
-            .find(b => b.getAttribute('aria-label') === 'Send message');
-        if (geminiSendBtn && !geminiSendBtn.disabled && (geminiSendBtn.offsetParent !== null || geminiSendBtn.getClientRects().length > 0)) {
-            geminiSendBtn.click();
-            return { ok: true, domStatus: "verified-present", method: "click_send" };
-        }
-
-        // Priority 2: Standard DOM send/queue button
-        const submit = document.querySelector(
-            'button[data-testid="send-button"], ' +
-            'button[data-testid="queue-button"], ' +
-            '[data-tooltip-id="input-send-button-send-tooltip"], ' +
-            '[data-tooltip-id="input-send-button-queue-tooltip"], ' +
-            'button[aria-label="Send message"], ' +
-            'button[aria-label="Queue message"], ' +
-            'button[aria-label*="Send"], ' +
-            'button[aria-label*="Queue"], ' +
-            'svg.lucide-arrow-right, ' +
-            'svg[data-icon="arrow_forward"]'
-        )?.closest('button') || document.querySelector('button[data-testid="send-button"]');
-
-        if (submit && !submit.disabled && (submit.offsetParent !== null || submit.getClientRects().length > 0)) {
-            submit.click();
-            await new Promise(r => setTimeout(r, 60));
+            let inserted = false;
+            // Priority A: Try native clipboard paste via DataTransfer (Lexical PASTE_COMMAND natively parses multiline paragraphs)
             try {
-                editor.focus();
-                document.execCommand?.("selectAll", false, null);
-                document.execCommand?.("delete", false, null);
+                if (typeof ClipboardEvent === "function" && typeof DataTransfer === "function") {
+                    const dt = new DataTransfer();
+                    dt.setData("text/plain", textToInsert);
+                    const pasteEvent = new ClipboardEvent("paste", {
+                        bubbles: true,
+                        cancelable: true,
+                        clipboardData: dt,
+                        composed: true
+                    });
+                    inserted = editor.dispatchEvent(pasteEvent);
+                }
             } catch (_) {}
-            return { ok: true, domStatus: "verified-present", method: "click_submit" };
+
+            // Priority B: If paste event was unhandled or didn't populate text, try document.execCommand
+            if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
+                try { inserted = !!document.execCommand?.("insertText", false, textToInsert); } catch {}
+            }
+
+            // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy
+            if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
+                const hasNewlines = textToInsert.includes("\n");
+                if (hasNewlines) {
+                    editor.innerHTML = textToInsert
+                        .split(/\r?\n/)
+                        .map(function(line) {
+                            var safe = line ? line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
+                            return '<p dir="ltr"><span data-lexical-text="true">' + safe + '</span></p>';
+                        })
+                        .join('');
+                } else {
+                    editor.textContent = textToInsert;
+                }
+                editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
+                editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
+            }
+
+            // Wait for Lexical / Preact to register input state
+            await new Promise(r => setTimeout(r, 120));
+
+            // Staging check (Lexical input boundary verification)
+            // Credit: Kelvin Tan (@kelverssg)
+            const editorText = editor.innerText || editor.textContent || "";
+            const normalizeForStaging = value => value.replace(/[\s\\\x60]/g, '');
+            const actual = normalizeForStaging(editorText);
+            const expected = normalizeForStaging(textToInsert);
+            const minExpected = Math.floor(expected.length * 0.85);
+            const head = expected.slice(0, Math.min(80, expected.length));
+            const tail = expected.slice(Math.max(0, expected.length - 80));
+            const staged = expected.length === 0
+                || actual.includes(expected)
+                || (actual.length >= minExpected && actual.includes(head) && actual.includes(tail));
+            if (!staged) {
+                return { ok: false, error: "staging_failed", domStatus: "editor_found_unverified" };
+            }
+        }
+
+        // Retry loop: wait for send button to be enabled (handles async attachment processing)
+        for (let attempt = 0; attempt < 10; attempt++) {
+            // Priority 1: Gemini Antigravity "Send message" button inside side panel
+            // Credit: Kelvin Tan (@kelverssg)
+            const box = document.getElementById('antigravity.agentSidePanelInputBox');
+            const geminiSendBtn = (box ? [...box.querySelectorAll('button')] : [...document.querySelectorAll('button')])
+                .find(b => b.getAttribute('aria-label') === 'Send message');
+            if (geminiSendBtn && !geminiSendBtn.disabled && (geminiSendBtn.offsetParent !== null || geminiSendBtn.getClientRects().length > 0)) {
+                geminiSendBtn.click();
+                return { ok: true, domStatus: "verified-present", method: "click_send" };
+            }
+
+            // Priority 2: Standard DOM send/queue button
+            const submit = document.querySelector(
+                'button[data-testid="send-button"], ' +
+                'button[data-testid="queue-button"], ' +
+                '[data-tooltip-id="input-send-button-send-tooltip"], ' +
+                '[data-tooltip-id="input-send-button-queue-tooltip"], ' +
+                'button[aria-label="Send message"], ' +
+                'button[aria-label="Queue message"], ' +
+                'button[aria-label*="Send"], ' +
+                'button[aria-label*="Queue"], ' +
+                'svg.lucide-arrow-right, ' +
+                'svg[data-icon="arrow_forward"]'
+            )?.closest('button') || document.querySelector('button[data-testid="send-button"]');
+
+            if (submit && !submit.disabled && (submit.offsetParent !== null || submit.getClientRects().length > 0)) {
+                submit.click();
+                await new Promise(r => setTimeout(r, 60));
+                try {
+                    editor.focus();
+                    document.execCommand?.("selectAll", false, null);
+                    document.execCommand?.("delete", false, null);
+                } catch (_) {}
+                return { ok: true, domStatus: "verified-present", method: "click_submit" };
+            }
+
+            if (attempt < 9) {
+                await new Promise(r => setTimeout(r, 120));
+            }
         }
 
         // Priority 3: Trigger Enter key (submits when idle, queues when agent is working)
-        const isCancelVisible = !!(
-            document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]') ||
-            document.querySelector('button[aria-label="Stop"]') ||
-            document.querySelector('button[aria-label="Cancel"]')
-        );
-        editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
-        editor.dispatchEvent(new KeyboardEvent("keypress", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
-        editor.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
-        
-        return { ok: true, domStatus: "verified-present", method: "enter_keypress", queued: isCancelVisible };
+        if (hasText) {
+            const isCancelVisible = !!(
+                document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]') ||
+                document.querySelector('button[aria-label="Stop"]') ||
+                document.querySelector('button[aria-label="Cancel"]')
+            );
+            editor.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
+            editor.dispatchEvent(new KeyboardEvent("keypress", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
+            editor.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 }));
+            
+            return { ok: true, domStatus: "verified-present", method: "enter_keypress", queued: isCancelVisible };
+        }
+
+        return { ok: false, error: "send_button_not_ready", domStatus: "button_disabled", reason: "Send button is disabled or not found" };
     })()`;
 
     // Target the main (default) execution context first and exclusively for DOM submissions
@@ -4251,9 +4265,11 @@ export async function createServer() {
         }
 
         if (!cdpConnection) {
+            console.error('[send] CDP not connected');
             return res.status(503).json({ error: 'CDP not connected' });
         }
 
+        console.log(`[send] Incoming message (${message.length} chars)`);
         const msgHash = sendHash(message);
 
         // Guard against duplicate concurrent in-flight submissions (double-tap mobile clicks)
@@ -4319,6 +4335,7 @@ export async function createServer() {
             return res.status(500).json({
                 success: false,
                 method: 'error',
+                error: String(e?.message || e),
                 details: { ok: false, error: String(e?.message || e), domStatus: 'attempted' }
             });
         }
@@ -4338,6 +4355,9 @@ export async function createServer() {
                 length: message.length,
                 queued: Boolean(result.queued)
             });
+            console.log(`[send] Message sent successfully via ${result.method || 'inject'} (queued: ${Boolean(result.queued)})`);
+        } else {
+            console.warn(`[send] Injection failed: ${result.error || result.reason || 'unknown'} (method: ${result.method})`);
         }
 
         // Always return 200 - the message usually goes through even if CDP reports issues
@@ -4346,6 +4366,7 @@ export async function createServer() {
             success: result.ok !== false,
             queued: Boolean(result.queued),
             method: result.method || 'attempted',
+            error: result.ok === false ? (result.error || result.reason || 'Failed to send message') : undefined,
             details: result
         });
     });
@@ -4504,100 +4525,74 @@ export async function createServer() {
             let injection = null;
             if (inject) {
                 if (!cdpConnection) {
+                    console.error('[Upload-Media] CDP not connected');
                     return res.status(503).json({ error: 'CDP not connected', image: savedImage, audio: savedAudio });
                 }
 
                 let imageAttachedNatively = false;
-                let audioAttachedNatively = false;
 
-                try {
-                    const defaultCtx = cdpConnection.contexts.find(c => c.auxData?.isDefault) || cdpConnection.contexts[0];
-                    const attachResult = await cdpConnection.call("Runtime.evaluate", {
-                        contextId: defaultCtx?.id,
-                        expression: `(async () => {
-                            const results = { image: false, audio: false };
-                            try {
-                                const root = document.querySelector(".antigravity-agent-side-panel");
-                                if (!root) return results;
+                if (savedImage) {
+                    try {
+                        const doc = await cdpConnection.call("DOM.getDocument", {});
+                        if (doc && doc.root && doc.root.nodeId) {
+                            const fileInput = await cdpConnection.call("DOM.querySelector", {
+                                nodeId: doc.root.nodeId,
+                                selector: "input[type=file]"
+                            });
+                            if (fileInput && fileInput.nodeId) {
+                                await cdpConnection.call("Runtime.evaluate", {
+                                    expression: `(() => {
+                                        const inp = document.querySelector("input[type=file]");
+                                        if (inp) inp.value = "";
+                                    })()`,
+                                    returnByValue: true
+                                });
 
-                                ${savedImage ? `
-                                // 1. Attach image via native input change handler or setMediaAttachments
-                                const imgB64 = ${JSON.stringify(savedImage.dataUrl.split(',')[1])};
-                                const imgBinaryStr = atob(imgB64);
-                                const imgBytes = new Uint8Array(imgBinaryStr.length);
-                                for (let i = 0; i < imgBinaryStr.length; i++) imgBytes[i] = imgBinaryStr.charCodeAt(i);
-                                const imgFile = new File([imgBytes], ${JSON.stringify(savedImage.fileName)}, { type: ${JSON.stringify(savedImage.mimeType || 'image/png')} });
+                                await cdpConnection.call("DOM.setFileInputFiles", {
+                                    nodeId: fileInput.nodeId,
+                                    files: [savedImage.absolutePath]
+                                });
 
-                                const inp = document.querySelector("input[type=file]");
-                                if (inp && inp.l?.changefalse) {
-                                    try {
-                                        inp.l.changefalse({ target: { files: [imgFile] } });
-                                        results.image = true;
-                                    } catch (_) {}
-                                }
-                                await new Promise(r => setTimeout(r, 120));
-                                ` : ''}
-
-                                // 2. Find Preact inputBoxRef
-                                let inputBoxRef = null;
-                                function walk(vnode) {
-                                    if (!vnode || inputBoxRef) return;
-                                    if (vnode.__c?.props?.inputBoxRef) {
-                                        inputBoxRef = vnode.__c.props.inputBoxRef;
-                                        return;
-                                    }
-                                    if (Array.isArray(vnode.__k)) vnode.__k.forEach(walk);
-                                }
-                                if (root.__k) walk(root.__k);
-
-                                if (inputBoxRef?.current?.setMediaAttachments) {
-                                    ${savedImage ? `
-                                    if (!results.image) {
-                                        const imgItem = {
-                                            $typeName: "exa.codeium_common_pb.Media",
-                                            mimeType: ${JSON.stringify(savedImage.mimeType || 'image/png')},
-                                            payload: { case: "inlineData", value: imgBytes },
-                                            description: ${JSON.stringify(savedImage.fileName)}
-                                        };
-                                        inputBoxRef.current.setMediaAttachments(prev => [...(prev || []), imgItem]);
-                                        results.image = true;
-                                    }
-                                    ` : ''}
-
-                                    ${savedAudio ? `
-                                    const audioB64 = ${JSON.stringify(savedAudio.dataUrl.split(',')[1])};
-                                    const audioBinaryStr = atob(audioB64);
-                                    const audioBytes = new Uint8Array(audioBinaryStr.length);
-                                    for (let i = 0; i < audioBinaryStr.length; i++) audioBytes[i] = audioBinaryStr.charCodeAt(i);
-
-                                    const audioItem = {
-                                        $typeName: "exa.codeium_common_pb.Media",
-                                        mimeType: ${JSON.stringify(savedAudio.mimeType)},
-                                        payload: { case: "inlineData", value: audioBytes },
-                                        durationSeconds: ${Number(savedAudio.durationSeconds) || 0},
-                                        description: ${JSON.stringify(savedAudio.fileName)}
-                                    };
-                                    inputBoxRef.current.setMediaAttachments(prev => [...(prev || []), audioItem]);
-                                    results.audio = true;
-                                    ` : ''}
-
+                                for (let i = 0; i < 15; i++) {
                                     await new Promise(r => setTimeout(r, 150));
+                                    const checkRes = await cdpConnection.call("Runtime.evaluate", {
+                                        expression: `(() => {
+                                            const root = document.querySelector('.antigravity-agent-side-panel');
+                                            let inputBox = null;
+                                            function walk(vnode) {
+                                                if (!vnode || inputBox) return;
+                                                if (vnode.__c?.props?.inputBoxRef?.current?.getMediaAttachments) {
+                                                    inputBox = vnode.__c.props.inputBoxRef.current;
+                                                    return;
+                                                }
+                                                if (Array.isArray(vnode.__k)) vnode.__k.forEach(walk);
+                                            }
+                                            if (root && root.__k) walk(root.__k);
+                                            const list = inputBox?.getMediaAttachments ? inputBox.getMediaAttachments() : [];
+                                            const chip = document.querySelector('[data-testid*="attachment"], [aria-label*="Remove"]');
+                                            const sendBtn = (document.getElementById('antigravity.agentSidePanelInputBox')?.querySelectorAll('button')
+                                                ? [...document.getElementById('antigravity.agentSidePanelInputBox').querySelectorAll('button')]
+                                                : [...document.querySelectorAll('button')])
+                                                .find(b => b.getAttribute('aria-label') === 'Send message');
+                                            return {
+                                                count: list.length,
+                                                hasChip: !!chip,
+                                                sendBtnReady: !!sendBtn && !sendBtn.disabled
+                                            };
+                                        })()`,
+                                        returnByValue: true
+                                    });
+                                    const v = checkRes?.result?.value;
+                                    if (v && (v.count > 0 || v.hasChip || v.sendBtnReady)) {
+                                        imageAttachedNatively = true;
+                                        break;
+                                    }
                                 }
-
-                                return results;
-                            } catch (err) {
-                                return { error: err.message, ...results };
                             }
-                        })()`,
-                        returnByValue: true,
-                        awaitPromise: true
-                    });
-
-                    const val = attachResult?.result?.value || {};
-                    imageAttachedNatively = !!val.image;
-                    audioAttachedNatively = !!val.audio;
-                } catch (e) {
-                    console.warn("[Upload-Media] Native attachment error:", e.message);
+                        }
+                    } catch (attachErr) {
+                        console.warn("[Upload-Media] CDP image attachment error:", attachErr.message);
+                    }
                 }
 
                 if (submit) {
@@ -4606,7 +4601,7 @@ export async function createServer() {
                     if (savedImage && !imageAttachedNatively) {
                         composedPrompt += (composedPrompt ? '\n\n' : '') + `[Attached image: ${savedImage.fileName}](${savedImage.absolutePath})`;
                     }
-                    if (savedAudio && !audioAttachedNatively) {
+                    if (savedAudio) {
                         composedPrompt += (composedPrompt ? '\n\n' : '') + `[Voice memo: ${savedAudio.fileName}](${savedAudio.absolutePath})`;
                     }
 
@@ -4623,11 +4618,12 @@ export async function createServer() {
                         });
                     } catch {}
                 } else {
-                    injection = { ok: true, staged: true, imageAttachedNatively, audioAttachedNatively };
+                    injection = { ok: true, staged: true, imageAttachedNatively, audioAttachedNatively: false };
                 }
             }
 
             if (inject && injection && injection.ok === false) {
+                console.error('[Upload-Media] Injection failed:', injection);
                 return res.status(500).json({
                     success: false,
                     error: injection.error || injection.reason || 'Failed to inject media into session',
@@ -4656,6 +4652,7 @@ export async function createServer() {
             }
         } catch (e) {
             const error = /** @type {Error} */ (e);
+            console.error('[Upload-Media] Exception caught:', error);
             res.status(400).json({ error: error.message });
         }
     });
@@ -4685,84 +4682,79 @@ export async function createServer() {
                 mimeType,
                 data: cleanData
             });
+            console.log(`[Upload-Image] Stored ${saved.fileName} (${saved.absolutePath})`);
 
             let injection = null;
             if (inject) {
                 if (!cdpConnection) {
+                    console.error('[Upload-Image] CDP not connected');
                     return res.status(503).json({ error: 'CDP not connected', upload: saved });
                 }
 
                 let attachedNatively = false;
 
-                // 1. Native attachment via Preact file input change handler or setMediaAttachments
+                // 1. Primary Method: CDP Native DOM.setFileInputFiles on Antigravity file input
                 try {
-                    const defaultCtx = cdpConnection.contexts.find(c => c.auxData?.isDefault) || cdpConnection.contexts[0];
-                    const preactAttachResult = await cdpConnection.call("Runtime.evaluate", {
-                        contextId: defaultCtx?.id,
-                        expression: `(async () => {
-                            try {
-                                const root = document.querySelector(".antigravity-agent-side-panel");
-                                if (!root) return { ok: false, reason: "no_panel" };
+                    const doc = await cdpConnection.call("DOM.getDocument", {});
+                    if (doc && doc.root && doc.root.nodeId) {
+                        const fileInput = await cdpConnection.call("DOM.querySelector", {
+                            nodeId: doc.root.nodeId,
+                            selector: "input[type=file]"
+                        });
+                        if (fileInput && fileInput.nodeId) {
+                            await cdpConnection.call("Runtime.evaluate", {
+                                expression: `(() => {
+                                    const inp = document.querySelector("input[type=file]");
+                                    if (inp) inp.value = "";
+                                })()`,
+                                returnByValue: true
+                            });
 
-                                const b64 = ${JSON.stringify(cleanData)};
-                                const binaryStr = atob(b64);
-                                const bytes = new Uint8Array(binaryStr.length);
-                                for (let i = 0; i < binaryStr.length; i++) {
-                                    bytes[i] = binaryStr.charCodeAt(i);
+                            await cdpConnection.call("DOM.setFileInputFiles", {
+                                nodeId: fileInput.nodeId,
+                                files: [saved.absolutePath]
+                            });
+
+                            // Poll for Antigravity Preact to process file and create thumbnail
+                            for (let i = 0; i < 15; i++) {
+                                await new Promise(r => setTimeout(r, 150));
+                                const checkRes = await cdpConnection.call("Runtime.evaluate", {
+                                    expression: `(() => {
+                                        const root = document.querySelector('.antigravity-agent-side-panel');
+                                        let inputBox = null;
+                                        function walk(vnode) {
+                                            if (!vnode || inputBox) return;
+                                            if (vnode.__c?.props?.inputBoxRef?.current?.getMediaAttachments) {
+                                                inputBox = vnode.__c.props.inputBoxRef.current;
+                                                return;
+                                            }
+                                            if (Array.isArray(vnode.__k)) vnode.__k.forEach(walk);
+                                        }
+                                        if (root && root.__k) walk(root.__k);
+                                        const list = inputBox?.getMediaAttachments ? inputBox.getMediaAttachments() : [];
+                                        const chip = document.querySelector('[data-testid*="attachment"], [aria-label*="Remove"]');
+                                        const sendBtn = (document.getElementById('antigravity.agentSidePanelInputBox')?.querySelectorAll('button')
+                                            ? [...document.getElementById('antigravity.agentSidePanelInputBox').querySelectorAll('button')]
+                                            : [...document.querySelectorAll('button')])
+                                            .find(b => b.getAttribute('aria-label') === 'Send message');
+                                        return {
+                                            count: list.length,
+                                            hasChip: !!chip,
+                                            sendBtnReady: !!sendBtn && !sendBtn.disabled
+                                        };
+                                    })()`,
+                                    returnByValue: true
+                                });
+                                const v = checkRes?.result?.value;
+                                if (v && (v.count > 0 || v.hasChip || v.sendBtnReady)) {
+                                    attachedNatively = true;
+                                    break;
                                 }
-
-                                const fileName = ${JSON.stringify(saved.fileName)};
-                                const fileMime = ${JSON.stringify(saved.mimeType || 'image/png')};
-
-                                // Method 1: Trigger native file input change handler
-                                const inp = document.querySelector("input[type=file]");
-                                if (inp && inp.l?.changefalse) {
-                                    try {
-                                        const file = new File([bytes], fileName, { type: fileMime });
-                                        inp.l.changefalse({ target: { files: [file] } });
-                                        await new Promise(r => setTimeout(r, 150));
-                                        return { ok: true, method: "input_changefalse" };
-                                    } catch (_) {}
-                                }
-
-                                // Method 2: Direct Preact setMediaAttachments
-                                let inputBoxRef = null;
-                                function walk(vnode) {
-                                    if (!vnode || inputBoxRef) return;
-                                    if (vnode.__c?.props?.inputBoxRef) {
-                                        inputBoxRef = vnode.__c.props.inputBoxRef;
-                                        return;
-                                    }
-                                    if (Array.isArray(vnode.__k)) vnode.__k.forEach(walk);
-                                }
-                                if (root.__k) walk(root.__k);
-
-                                if (inputBoxRef?.current?.setMediaAttachments) {
-                                    const mediaItem = {
-                                        $typeName: "exa.codeium_common_pb.Media",
-                                        mimeType: fileMime,
-                                        payload: { case: "inlineData", value: bytes },
-                                        description: fileName
-                                    };
-                                    inputBoxRef.current.setMediaAttachments(prev => [...(prev || []), mediaItem]);
-                                    await new Promise(r => setTimeout(r, 150));
-                                    return { ok: true, method: "setMediaAttachments" };
-                                }
-
-                                return { ok: false, reason: "no_attachment_target" };
-                            } catch (err) {
-                                return { ok: false, error: err.message };
                             }
-                        })()`,
-                        returnByValue: true,
-                        awaitPromise: true
-                    });
-
-                    if (preactAttachResult?.result?.value?.ok) {
-                        attachedNatively = true;
+                        }
                     }
-                } catch (preactErr) {
-                    console.warn("[Upload-Image] Native attachment failed:", preactErr.message);
+                } catch (attachErr) {
+                    console.warn("[Upload-Image] CDP file input attachment error:", attachErr.message);
                 }
 
                 if (submit) {
@@ -4791,6 +4783,7 @@ export async function createServer() {
             }
 
             if (inject && injection && injection.ok === false) {
+                console.error('[Upload-Image] Injection failed:', injection);
                 return res.status(500).json({
                     success: false,
                     error: injection.error || injection.reason || 'Failed to inject message into session',
@@ -4805,7 +4798,7 @@ export async function createServer() {
                 injection
             };
             lastUploadResult = result;
-            console.log(`[Upload-Image] Image uploaded successfully: ${saved.fileName} (attachedNatively: ${injection?.attachedNatively})`);
+            console.log(`[Upload-Image] Image uploaded successfully: ${saved.fileName} (attachedNatively: ${injection?.attachedNatively}, submit: ${submit})`);
             res.json(result);
             if (inject && injection && injection.ok !== false) {
                 sessionStats.increment('uploadsInjected');
@@ -4815,6 +4808,7 @@ export async function createServer() {
             }
         } catch (e) {
             const error = /** @type {Error} */ (e);
+            console.error('[Upload-Image] Exception caught:', error);
             res.status(400).json({ error: error.message });
         }
     });
@@ -4845,129 +4839,28 @@ export async function createServer() {
                 data: cleanData,
                 durationSeconds
             });
+            console.log(`[Upload-Audio] Stored ${saved.fileName} (${saved.durationSeconds}s) at ${saved.absolutePath}`);
 
             let injection = null;
             if (inject) {
                 if (!cdpConnection) {
+                    console.error('[Upload-Audio] CDP not connected');
                     return res.status(503).json({ error: 'CDP not connected', upload: saved });
-                }
-
-                let attachedNatively = false;
-
-                // 1. Primary Method: Attach directly to Preact inputBoxRef in Antigravity IDE
-                try {
-                    const defaultCtx = cdpConnection.contexts.find(c => c.auxData?.isDefault) || cdpConnection.contexts[0];
-                    const preactAttachResult = await cdpConnection.call("Runtime.evaluate", {
-                        contextId: defaultCtx?.id,
-                        expression: `(async () => {
-                            try {
-                                const root = document.querySelector(".antigravity-agent-side-panel");
-                                if (!root || !root.__k) return { ok: false, reason: "no_preact_root" };
-                                let inputBoxRef = null;
-                                function walk(vnode) {
-                                    if (!vnode || inputBoxRef) return;
-                                    if (vnode.__c?.props?.inputBoxRef) {
-                                        inputBoxRef = vnode.__c.props.inputBoxRef;
-                                        return;
-                                    }
-                                    if (Array.isArray(vnode.__k)) {
-                                        vnode.__k.forEach(walk);
-                                    }
-                                }
-                                walk(root.__k);
-                                if (!inputBoxRef?.current?.setMediaAttachments) {
-                                    return { ok: false, reason: "no_setMediaAttachments" };
-                                }
-
-                                const b64 = ${JSON.stringify(cleanData)};
-                                const binaryStr = atob(b64);
-                                const bytes = new Uint8Array(binaryStr.length);
-                                for (let i = 0; i < binaryStr.length; i++) {
-                                    bytes[i] = binaryStr.charCodeAt(i);
-                                }
-
-                                const mediaItem = {
-                                    $typeName: "exa.codeium_common_pb.Media",
-                                    mimeType: ${JSON.stringify(saved.mimeType)},
-                                    payload: { case: "inlineData", value: bytes },
-                                    durationSeconds: ${Number(saved.durationSeconds) || 0},
-                                    description: ${JSON.stringify(saved.fileName)}
-                                };
-
-                                inputBoxRef.current.setMediaAttachments(prev => [...(prev || []), mediaItem]);
-                                return { ok: true, method: "preact_direct" };
-                            } catch (err) {
-                                return { ok: false, error: err.message };
-                            }
-                        })()`,
-                        returnByValue: true,
-                        awaitPromise: true
-                    });
-
-                    if (preactAttachResult?.result?.value?.ok) {
-                        attachedNatively = true;
-                    }
-                } catch (preactErr) {
-                    console.warn("[Upload-Audio] Direct Preact attachment failed, trying fallback:", preactErr.message);
-                }
-
-                // 2. Fallback Method: CDP DOM file input
-                if (!attachedNatively) {
-                    try {
-                        const doc = await cdpConnection.call("DOM.getDocument", {});
-                        if (doc && doc.root && doc.root.nodeId) {
-                            const fileInput = await cdpConnection.call("DOM.querySelector", {
-                                nodeId: doc.root.nodeId,
-                                selector: "input[type=file]"
-                            });
-                            if (fileInput && fileInput.nodeId) {
-                                await cdpConnection.call("Runtime.evaluate", {
-                                    expression: `(() => {
-                                        const inp = document.querySelector("input[type=file]");
-                                        if (inp) inp.value = "";
-                                    })()`,
-                                    returnByValue: true
-                                });
-
-                                await cdpConnection.call("DOM.setFileInputFiles", {
-                                    nodeId: fileInput.nodeId,
-                                    files: [saved.absolutePath]
-                                });
-                                attachedNatively = true;
-                                await new Promise(r => setTimeout(r, 400));
-                            }
-                        }
-                    } catch (attachErr) {
-                        console.warn("[Upload-Audio] Fallback file attachment failed:", attachErr.message);
-                    }
                 }
 
                 if (submit) {
                     const userPrompt = prompt ? String(prompt).trim() : '';
-                    let composedPrompt = userPrompt;
-                    if (!attachedNatively) {
-                        composedPrompt = composedPrompt
-                            ? `${composedPrompt}\n\n[Voice memo: ${saved.fileName}](${saved.absolutePath})`
-                            : `[Voice memo: ${saved.fileName}](${saved.absolutePath})`;
-                    }
-                    injection = await injectMessage(cdpConnection, composedPrompt);
+                    const voiceLink = `[Voice memo: ${saved.fileName}](${saved.absolutePath})`;
+                    const composedPrompt = userPrompt ? `${userPrompt}\n\n${voiceLink}` : voiceLink;
 
-                    // Clean up file input if used
-                    try {
-                        await cdpConnection.call("Runtime.evaluate", {
-                            expression: `(() => {
-                                const inp = document.querySelector("input[type=file]");
-                                if (inp) inp.value = "";
-                            })()`,
-                            returnByValue: true
-                        });
-                    } catch {}
+                    injection = await injectMessage(cdpConnection, composedPrompt);
                 } else {
-                    injection = { ok: true, staged: true, attachedNatively };
+                    injection = { ok: true, staged: true, attachedNatively: false };
                 }
             }
 
             if (inject && injection && injection.ok === false) {
+                console.error('[Upload-Audio] Injection failed:', injection);
                 return res.status(500).json({
                     success: false,
                     error: injection.error || injection.reason || 'Failed to inject voice memo into session',
@@ -4982,7 +4875,7 @@ export async function createServer() {
                 injection
             };
             lastUploadResult = result;
-            console.log(`[Upload-Audio] Audio uploaded successfully: ${saved.fileName} (${saved.durationSeconds}s, attachedNatively: ${injection?.attachedNatively})`);
+            console.log(`[Upload-Audio] Audio uploaded successfully: ${saved.fileName} (${saved.durationSeconds}s, submit: ${submit})`);
             res.json(result);
             if (inject && injection && injection.ok !== false) {
                 sessionStats.increment('uploadsInjected');
@@ -4993,6 +4886,7 @@ export async function createServer() {
             }
         } catch (e) {
             const error = /** @type {Error} */ (e);
+            console.error('[Upload-Audio] Exception caught:', error);
             res.status(400).json({ error: error.message });
         }
     });

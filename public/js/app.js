@@ -2120,7 +2120,7 @@ async function sendMessage() {
       });
       const mediaPayload = await mediaRes.json();
       if (!mediaPayload.success) {
-        throw new Error(mediaPayload.error || 'Failed to send image and voice memo');
+        throw new Error(mediaPayload.error || mediaPayload.details?.error || 'Failed to send image and voice memo');
       }
       showSlideInNotification('Image and voice memo sent!', 'success');
       setTimeout(loadSnapshot, 500);
@@ -2147,7 +2147,7 @@ async function sendMessage() {
       });
       const payload = await response.json();
       if (!payload.success) {
-        throw new Error(payload.error || 'Failed to send voice memo');
+        throw new Error(payload.error || payload.details?.error || payload.reason || 'Failed to send voice memo');
       }
       showSlideInNotification('Voice memo sent!', 'success');
       setTimeout(loadSnapshot, 500);
@@ -2173,7 +2173,7 @@ async function sendMessage() {
       });
       const payload = await response.json();
       if (!payload.success) {
-        throw new Error(payload.error || 'Failed to send image');
+        throw new Error(payload.error || payload.details?.error || payload.reason || 'Failed to send image');
       }
       showSlideInNotification('Image sent!', 'success');
       setTimeout(loadSnapshot, 500);
@@ -2188,7 +2188,7 @@ async function sendMessage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (payload.success === false) {
-        throw new Error(payload.error || payload.details?.error || 'Failed to send message');
+        throw new Error(payload.error || payload.details?.error || payload.reason || payload.details?.reason || 'Failed to send message');
       }
       if (payload.queued || payload.details?.queued) {
         showSlideInNotification('Message queued for agent', 'info');
@@ -2375,14 +2375,27 @@ async function selectChat(title, chatId, workspace) {
   }
 }
 
-function openModal(title, options, onSelect) {
+function openModal(title, options, onSelect, activeValue = null) {
   modalTitle.textContent = title;
   modalList.innerHTML = '';
   options.forEach((option) => {
     const button = document.createElement('button');
-    button.className = 'modal-option';
+    const isActive = activeValue !== null ? option.value === activeValue : Boolean(option.active);
+    button.className = `modal-option${isActive ? ' active' : ''}`;
     button.type = 'button';
-    button.textContent = option.label;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'modal-option-label';
+    labelSpan.textContent = option.label;
+    button.appendChild(labelSpan);
+
+    if (option.badge || isActive) {
+      const badgeSpan = document.createElement('span');
+      badgeSpan.className = `modal-option-badge${isActive ? ' active' : ''}`;
+      badgeSpan.textContent = isActive ? '✓ Active' : (option.badge || '');
+      button.appendChild(badgeSpan);
+    }
+
     button.addEventListener('click', () => {
       closeModal();
       Promise.resolve(onSelect(option.value)).catch((error) => {
@@ -3089,9 +3102,38 @@ modelBtn.addEventListener('click', async () => {
     } catch (_) {}
   }
 
+  function formatModelItem(modelName) {
+    let badge = '';
+    const lower = modelName.toLowerCase();
+    if (lower.includes('thinking')) badge = '🧠 Thinking';
+    else if (lower.includes('flash') && lower.includes('high')) badge = '⚡ Flash High';
+    else if (lower.includes('flash')) badge = '⚡ Flash';
+    else if (lower.includes('pro') && lower.includes('high')) badge = '⭐ Pro High';
+    else if (lower.includes('pro')) badge = '⭐ Pro';
+    else if (lower.includes('sonnet')) badge = 'Claude';
+    else if (lower.includes('opus')) badge = 'Claude';
+    else if (lower.includes('haiku')) badge = 'Claude';
+    else if (lower.includes('gpt-4')) badge = 'OpenAI';
+
+    let score = 50;
+    if (lower.includes('3.8')) score = 10;
+    else if (lower.includes('3.7')) score = 20;
+    else if (lower.includes('3.6') || lower.includes('3.5')) score = 30;
+    else if (lower.includes('claude')) score = 40;
+    else if (lower.includes('gemini')) score = 25;
+
+    return { label: modelName, value: modelName, badge, score };
+  }
+
+  const formattedOptions = modelList
+    .map(formatModelItem)
+    .sort((a, b) => a.score - b.score || a.label.localeCompare(b.label));
+
+  const currentActive = state.currentModel || modelText.textContent.trim();
+
   openModal(
     'Select Model',
-    modelList.map((value) => ({ label: value, value })),
+    formattedOptions,
     async (value) => {
       const response = await fetchWithAuth('/set-model', {
         method: 'POST',
@@ -3100,9 +3142,12 @@ modelBtn.addEventListener('click', async () => {
       });
       const payload = await response.json();
       if (payload.success) {
+        state.currentModel = value;
         modelText.textContent = value;
+        showSlideInNotification(`Model set to ${value}`, 'success');
       }
-    }
+    },
+    currentActive
   );
 });
 targetBtn.addEventListener('click', showTargetSelector);
