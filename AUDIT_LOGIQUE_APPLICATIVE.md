@@ -174,18 +174,25 @@ Les nouveaux scénarios de tests E2E simulés conçus pour combler ces lacunes c
 
 ## 5. Plan d'Action & Roadmap Priorisée de Remédiation
 
-### 🚨 Phase 1 — Correctifs Immédiats & Urgents (Priorité P0)
-- [ ] **Patch DOM06-001** : Corriger le parseur IP dans `src/utils/network.js` pour respecter strictement la RFC 1918.
-- [ ] **Patch DOM07-001** : Résoudre `fs.realpath` dans `resolveWorkspacePath` (`src/utils/workspace.js`).
+### 🚨 Phase 1 — Correctifs Immédiats & Urgents (Priorité P0) — `✅ COMPLETED`
+- [x] **Patch DOM06-001** : Corriger le parseur IP dans `src/utils/network.js` pour respecter strictement la RFC 1918.
+- [x] **Patch DOM07-001** : Résoudre `fs.realpath` dans `resolveWorkspacePath` (`src/utils/workspace.js`).
 
-### ⚠️ Phase 2 — Robustesse Concurrence & Processus (Priorité P1)
-- [ ] **Patch DOM07-002** : Implémenter le process-group kill dans `terminalManager.stop()`.
-- [ ] **Patch DOM06-002** : Stabiliser le sel de session pour préserver les cookies mobiles au redémarrage.
-- [ ] **Patch DOM01-002** : Déplacer les 7 routes CDP orphelines dans `createServer()`.
-- [ ] **Patch DOM02-001** : Plafonner la profondeur de file `send-lock` (`MAX_SEND_QUEUE_DEPTH`).
-- [ ] **Patch DOM10-001** : Sérialiser les écritures sur `manifest.json` avec renommage atomique.
+### ⚠️ Phase 2 — Robustesse Concurrence & Processus (Priorité P1) — `✅ COMPLETED`
+- [x] **Patch DOM07-002** : Implémenter le process-group kill dans `terminalManager.stop()`.
+- [x] **Patch DOM06-002** : Stabiliser le sel de session pour préserver les cookies mobiles au redémarrage.
+- [x] **Patch DOM01-002** : Déplacer les 7 routes CDP orphelines dans `createServer()`.
+- [x] **Patch DOM02-001** : Plafonner la profondeur de file `send-lock` (`MAX_SEND_QUEUE_DEPTH`).
+- [x] **Patch DOM10-001** : Sérialiser les écritures sur `manifest.json` avec renommage atomique.
+- [x] **Patch DOM03-001** : Injection Lexical par événement `ClipboardEvent` natif sans désynchronisation d'arbre DOM.
+- [x] **Patch DOM11-001** : Normalisation heuristique et neutralisation des commandes destructrices.
+- [x] **Patch DOM05-001** : Contrôle de contre-pression WebSocket (512 KB) et purge des clients lents.
+- [x] **Patch DOM04-001** : Validation stricte des index d'options dans `/api/interact-action`.
 
-### 🛡️ Phase 3 — Automatisation E2E & Polish (Priorité P2 / P3)
-- [ ] **Automatisation E2E** : Intégrer la nouvelle suite `simulated-e2e-workflows.test.js` dans la CI (`npm run test:all`).
-- [ ] **Polish Mobile & A11y** : Améliorer le recalcul dynamique du viewport lors du déploiement du clavier virtuel mobile.
-- [ ] **Maintenance Disque** : Ajouter une routine de nettoyage automatique des fichiers anciens dans `data/uploads/`.
+### 🛡️ Phase 3 — Automatisation E2E, Sondes & Polish (Priorité P2 / P3) — `✅ COMPLETED`
+- [x] **Automatisation E2E** : Suite `test/unit/simulated-e2e-workflows.test.js` (27 tests automatisés) intégrée dans la CI (`npm run test:all`).
+- [x] **Sondes Système /ready & /health/deep** : Télémétrie mémoire V8, connectivité CDP, profondeur de file `send-lock` et inscriptibilité disque.
+- [x] **Contrôle d'Accès Universel 60+ Routes** : Rejet HTTP 401 systématique sur toutes les routes opérationnelles sans cookie valide.
+- [x] **Bornes Uploads 15 MB & Whitelist MIME** : Rejet immédiat des payloads vides ou non autorisés.
+- [x] **Maintenance Disque** : Routine de nettoyage automatique et rétention (`pruneUploadsDirectory`) dans `data/uploads/`.
+- [x] **CI GitHub Actions** : Matrice Node 22/24 étendue aux branches `feat/**` avec exécution de Vitest et smoke tests.

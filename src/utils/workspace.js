@@ -392,6 +392,16 @@ export async function saveQuickCommands(commands) {
     return normalized;
 }
 
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024; // 15 MB limit
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/gif',
+    'image/webp',
+    'image/svg+xml'
+]);
+
 /**
  * Persist a base64 image upload to the data directory.
  *
@@ -401,7 +411,19 @@ export async function saveQuickCommands(commands) {
 export async function saveUploadedImage(input) {
     await ensureWorkspaceData();
 
-    const mimeType = String(input.mimeType || 'image/png');
+    const mimeType = String(input.mimeType || 'image/png').toLowerCase().trim();
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+        throw new Error(`Unsupported image MIME type: ${input.mimeType}`);
+    }
+
+    const buffer = Buffer.from(input.data, 'base64');
+    if (buffer.length === 0) {
+        throw new Error('Image payload is empty');
+    }
+    if (buffer.length > MAX_IMAGE_BYTES) {
+        throw new Error(`Image file size (${(buffer.length / (1024 * 1024)).toFixed(2)} MB) exceeds 15 MB limit`);
+    }
+
     const safeBaseName = String(input.name || 'mobile-upload')
         .replace(/[^a-zA-Z0-9._-]+/g, '-')
         .replace(/^-+|-+$/g, '') || 'mobile-upload';
@@ -411,7 +433,6 @@ export async function saveUploadedImage(input) {
             mimeType.includes('webp') ? '.webp' : '.png';
 
     const fileName = `${Date.now()}-${safeBaseName}${safeBaseName.endsWith(extension) ? '' : extension}`;
-    const buffer = Buffer.from(input.data, 'base64');
     const absolutePath = join(UPLOADS_DIR, fileName);
     await fsp.writeFile(absolutePath, buffer);
 

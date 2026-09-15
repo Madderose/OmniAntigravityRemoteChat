@@ -1129,9 +1129,40 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
         document.execCommand?.("delete", false, null);
 
         let inserted = false;
-        try { inserted = !!document.execCommand?.("insertText", false, textToInsert); } catch {}
-        if (!inserted) {
-            editor.textContent = textToInsert;
+        // Priority A: Try native clipboard paste via DataTransfer (Lexical PASTE_COMMAND natively parses multiline paragraphs)
+        try {
+            if (typeof ClipboardEvent === "function" && typeof DataTransfer === "function") {
+                const dt = new DataTransfer();
+                dt.setData("text/plain", textToInsert);
+                const pasteEvent = new ClipboardEvent("paste", {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: dt,
+                    composed: true
+                });
+                inserted = editor.dispatchEvent(pasteEvent);
+            }
+        } catch (_) {}
+
+        // Priority B: If paste event was unhandled or didn't populate text, try document.execCommand
+        if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
+            try { inserted = !!document.execCommand?.("insertText", false, textToInsert); } catch {}
+        }
+
+        // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy
+        if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
+            const hasNewlines = textToInsert.includes("\n");
+            if (hasNewlines) {
+                editor.innerHTML = textToInsert
+                    .split(/\r?\n/)
+                    .map(function(line) {
+                        var safe = line ? line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
+                        return '<p dir="ltr"><span data-lexical-text="true">' + safe + '</span></p>';
+                    })
+                    .join('');
+            } else {
+                editor.textContent = textToInsert;
+            }
             editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
             editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
         }
@@ -3334,7 +3365,7 @@ function broadcastCDPStatus(status) {
 }
 
 // Create Express app
-async function createServer() {
+export async function createServer() {
     const app = express();
     await ensureWorkspaceData();
 
@@ -3526,7 +3557,17 @@ async function createServer() {
 
     // Auth Middleware
     app.use((req, res, next) => {
-        const publicPaths = ['/login', '/login.html', '/favicon.ico', '/manifest.json', '/sw.js', '/js/login.js'];
+        const publicPaths = [
+            '/login',
+            '/login.html',
+            '/favicon.ico',
+            '/manifest.json',
+            '/sw.js',
+            '/js/login.js',
+            '/health',
+            '/ready',
+            '/health/deep'
+        ];
         if (
             publicPaths.includes(req.path) ||
             req.path.startsWith('/css/') ||
@@ -3557,10 +3598,10 @@ async function createServer() {
         }
 
         // If it's an API request, return 401, otherwise redirect to login
-        if (req.xhr || req.headers.accept?.includes('json') || req.path.startsWith('/snapshot') || req.path.startsWith('/send')) {
-            res.status(401).json({ error: 'Unauthorized' });
+        if (req.xhr || req.headers.accept?.includes('json') || req.path.startsWith('/api/') || req.path.startsWith('/snapshot') || req.path.startsWith('/send') || req.path.startsWith('/remote-') || req.path.startsWith('/select-') || req.path.startsWith('/new-chat') || req.path.startsWith('/chat-') || req.path.startsWith('/app-state') || req.path.startsWith('/cdp-')) {
+            return res.status(401).json({ error: 'Unauthorized' });
         } else {
-            res.redirect('/login.html');
+            return res.redirect('/login.html');
         }
     });
 
@@ -3634,6 +3675,56 @@ async function createServer() {
                 ...getTunnelStatus()
             },
             version: VERSION
+        });
+    });
+
+    // Deep Readiness & System Health Probe
+    app.get(['/ready', '/health/deep'], (req, res) => {
+        const mem = process.memoryUsage();
+        const cdpReady = cdpConnection?.ws?.readyState === 1;
+        const sendQueueDepth = pendingSendCount;
+        const uploadDirExists = fs.existsSync(uploadsDir);
+        let diskWritable = false;
+        try {
+            const testPath = join(uploadsDir, `.health_probe_${Date.now()}`);
+            fs.writeFileSync(testPath, 'ok');
+            fs.unlinkSync(testPath);
+            diskWritable = true;
+        } catch (_) {
+            diskWritable = false;
+        }
+
+        const isReady = diskWritable && sendQueueDepth < MAX_SEND_QUEUE_DEPTH;
+        const statusCode = isReady ? 200 : 503;
+
+        res.status(statusCode).json({
+            status: isReady ? 'ready' : 'degraded',
+            ready: isReady,
+            uptimeSeconds: Math.round(process.uptime()),
+            timestamp: new Date().toISOString(),
+            version: VERSION,
+            cdp: {
+                connected: cdpReady,
+                activeTargetId,
+                availableTargetsCount: availableTargets.length
+            },
+            memory: {
+                heapUsedMB: Math.round(mem.heapUsed / (1024 * 1024)),
+                heapTotalMB: Math.round(mem.heapTotal / (1024 * 1024)),
+                rssMB: Math.round(mem.rss / (1024 * 1024))
+            },
+            storage: {
+                uploadsDirExists: uploadDirExists,
+                diskWritable
+            },
+            concurrency: {
+                sendQueueDepth,
+                maxQueueDepth: MAX_SEND_QUEUE_DEPTH,
+                activePromptLocks: ACTIVE_PROMPT_MAP.size
+            },
+            clients: {
+                openWebSocketClients: getOpenClientCount()
+            }
         });
     });
 

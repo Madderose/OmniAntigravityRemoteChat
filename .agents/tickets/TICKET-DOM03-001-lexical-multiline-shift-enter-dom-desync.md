@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-03` |
 | **Date Création** | 2026-09-15 |
 | **Rapporteur (Agent)** | OmniAuditor |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur / Rendu & Saisie)` |
 | **Catégorie** | `BUG` |
 | **Fichier(s) Concerné(s)` | `src/server.js:1840-1920` |
@@ -66,3 +66,4 @@ Dans certaines versions d'Antigravity/VS Code, Lexical ignore les nœuds DOM mod
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-15 | OmniAuditor | Diagnostic de la manipulation Lexical et ouverture du ticket | `OPEN` |
+| 2026-09-15 | Orchestrateur Squad | Implémentation de l'injection par émulation ClipboardEvent native et fallback de paragraphes structurés | `RESOLVED` |

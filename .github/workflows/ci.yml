@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, main, 'feat/**']
   pull_request:
-    branches: [master]
+    branches: [master, main, 'feat/**']
 
 jobs:
   test:
@@ -33,6 +33,16 @@ jobs:
           node --check src/server.js
           node --check launcher.js
           node --check test/test.js
+
+      - name: Run Unit Tests (Vitest)
+        run: npm run test:unit
+        env:
+          APP_PASSWORD: "ci-test-password-123"
+
+      - name: Run Smoke Integration Tests
+        run: npm test
+        env:
+          APP_PASSWORD: "ci-test-password-123"
 
   lint:
     name: Lint & Structure

@@ -270,6 +270,15 @@ async function main() {
             if (snapRes.status === 200 || snapRes.status === 503) pass(`GET /snapshot → ${snapRes.status} (expected)`);
             else fail(`GET /snapshot → ${snapRes.status}`);
 
+            // Test deep health & readiness probes
+            const readyRes = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/ready`);
+            if (readyRes.status === 200 || readyRes.status === 503) pass(`GET /ready → ${readyRes.status} (readiness probe)`);
+            else fail(`GET /ready → ${readyRes.status}`);
+
+            const deepRes = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/health/deep`);
+            if (deepRes.status === 200 || deepRes.status === 503) pass(`GET /health/deep → ${deepRes.status} (deep health probe)`);
+            else fail(`GET /health/deep → ${deepRes.status}`);
+
             // Test CDP targets endpoint
             const targetsRes = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/cdp-targets`);
             if (targetsRes.status === 200) {

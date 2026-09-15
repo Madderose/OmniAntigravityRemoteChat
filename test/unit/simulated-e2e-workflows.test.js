@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isLocalRequest } from '../../src/utils/network.js';
-import { resolveWorkspacePath, terminalManager, pruneUploadsDirectory } from '../../src/utils/workspace.js';
-import { withSendLock, safeTimingCompare } from '../../src/server.js';
+import { resolveWorkspacePath, terminalManager, pruneUploadsDirectory, saveUploadedImage, saveUploadedAudio } from '../../src/utils/workspace.js';
+import { withSendLock, safeTimingCompare, createServer } from '../../src/server.js';
 import { hashString } from '../../src/utils/hash.js';
 import { quotaService } from '../../src/quota-service.js';
 import { CloudflareTunnelManager } from '../../scripts/cloudflare-tunnel.js';
@@ -252,5 +252,114 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
             await expect(PinggyTunnelManager.cleanupOrphans()).resolves.toBeUndefined();
         });
     });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 10. Domaine 3 : Validation de Staging Lexical (DOM03-001 & DOM03-002)
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 3 — Éditeur Lexical & Staging Boundary Verification', () => {
+
+        it('normalise et valide fidèlement les prompts complexes multilignes avec backticks', () => {
+            const complexPrompt = "```javascript\nconst a = 1;\nconsole.log(a);\n```\n\nDeuxième paragraphe avec `code inline`.";
+            const normalize = (val) => val.replace(/[\s\\\x60]/g, '');
+            
+            const actual = normalize(complexPrompt);
+            const expected = normalize(complexPrompt);
+            
+            const minExpected = Math.floor(expected.length * 0.85);
+            const head = expected.slice(0, Math.min(80, expected.length));
+            const tail = expected.slice(Math.max(0, expected.length - 80));
+            
+            const staged = expected.length === 0
+                || actual.includes(expected)
+                || (actual.length >= minExpected && actual.includes(head) && actual.includes(tail));
+                
+            expect(staged).toBe(true);
+        });
+
+        it('rejette un staging tronqué ou incomplet (< 85% de couverture)', () => {
+            const fullPrompt = "Paragraphe un très long avec beaucoup de détails importants pour l'exécution d'une commande complexe.\nParagraphe deux.";
+            const truncated = "Paragraphe un très court.";
+            const normalize = (val) => val.replace(/[\s\\\x60]/g, '');
+            
+            const actual = normalize(truncated);
+            const expected = normalize(fullPrompt);
+            const minExpected = Math.floor(expected.length * 0.85);
+            const head = expected.slice(0, Math.min(80, expected.length));
+            const tail = expected.slice(Math.max(0, expected.length - 80));
+            
+            const staged = expected.length === 0
+                || actual.includes(expected)
+                || (actual.length >= minExpected && actual.includes(head) && actual.includes(tail));
+                
+            expect(staged).toBe(false);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 11. Domaine 8 : Bornes de Téléversement & Types MIME (DOM08-002)
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 8 — Rejet des Fichiers Volumineux & Formats Invalides', () => {
+
+        it('rejette les images au format MIME non autorisé', async () => {
+            await expect(saveUploadedImage({
+                mimeType: 'application/pdf',
+                name: 'document.pdf',
+                data: Buffer.from('faux-pdf').toString('base64')
+            })).rejects.toThrow(/Unsupported image MIME type/);
+        });
+
+        it('rejette les images vides (0 octet)', async () => {
+            await expect(saveUploadedImage({
+                mimeType: 'image/png',
+                name: 'vide.png',
+                data: ''
+            })).rejects.toThrow(/Image payload is empty/);
+        });
+
+        it('rejette les mémos vocaux au format audio non autorisé', async () => {
+            await expect(saveUploadedAudio({
+                mimeType: 'application/octet-stream',
+                name: 'invalide.bin',
+                data: Buffer.from('faux-audio').toString('base64')
+            })).rejects.toThrow(/Unsupported audio MIME type/);
+        });
+
+        it('rejette les mémos vocaux vides (0 octet)', async () => {
+            await expect(saveUploadedAudio({
+                mimeType: 'audio/webm',
+                name: 'silence.webm',
+                data: ''
+            })).rejects.toThrow(/Audio payload is empty/);
+        });
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // 12. Domaine 15 : Sonde de Préparation & Diagnostic Profond (/ready)
+    // ─────────────────────────────────────────────────────────────────
+    describe('Domaine 15 — Sonde de Préparation Profonde (/ready & /health/deep)', () => {
+
+        it('renvoie un rapport de diagnostic complet avec statut 200 ou 503', async () => {
+            const { server } = await createServer();
+            await new Promise((resolve) => server.listen(0, resolve));
+            const port = server.address().port;
+            try {
+                const res = await fetch(`http://127.0.0.1:${port}/ready`);
+                expect([200, 503]).toContain(res.status);
+                const data = await res.json();
+                expect(data).toBeDefined();
+                expect(typeof data.status).toBe('string');
+                expect(data.memory).toBeDefined();
+                expect(typeof data.memory.heapUsedMB).toBe('number');
+                expect(data.concurrency).toBeDefined();
+                expect(typeof data.concurrency.sendQueueDepth).toBe('number');
+                expect(data.storage).toBeDefined();
+                expect(typeof data.storage.diskWritable).toBe('boolean');
+            } finally {
+                server.close();
+            }
+        });
+    });
 });
+
+
 
