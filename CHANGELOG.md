@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-15
+
+### Added
+- 🔍 **360° Comprehensive Architecture & Security Audit Framework** — Integrated full 360° audit methodology adapted from `calculateur-tables`:
+  - Antigravity customization skill: `.agents/skills/omni-audit/SKILL.md` for standardizing domain assessments, SOP workflows, and ticket authoring.
+  - Master coordination documents: `AUDIT_ORCHESTRATION_MASTER.md` (dashboard of 15 packages with atomic lock registry) and `AUDIT_LOGIQUE_APPLICATIVE.md` (executive synthesis, risk quadrant, and remediation roadmap).
+  - 15 domain audit reports in `.agents/audit_reports/` covering the entire codebase with quantitative scorecards across 6 dimensions.
+  - Standardized ticketing system in `.agents/tickets/` with `TICKET_TEMPLATE.md`, `TICKETS_INDEX.md`, and 36 documented anomaly/enhancement tickets.
+- 🧪 **Simulated End-to-End Test Suite** — Added `test/unit/simulated-e2e-workflows.test.js` (16 automated tests) covering LAN auto-auth IP boundaries, workspace symlink confinement, terminal execution lifecycle & orphan termination, `withSendLock` concurrency serialization, and quota service offline resilience.
+
 ## [1.4.1] - 2026-09-05
 
 ### Added
