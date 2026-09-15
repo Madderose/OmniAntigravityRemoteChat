@@ -2427,13 +2427,17 @@ async function showTargetSelector() {
         throw new Error(switchPayload.error || 'Window switch failed');
       }
       targetText.textContent = switchPayload.target;
+      if (switchPayload.snapshot) {
+        renderSnapshot(switchPayload.snapshot);
+      }
+      showSlideInNotification(`Switched to: ${switchPayload.target}`, 'success');
       const historyActiveWindow = document.getElementById('historyActiveWindow');
       if (historyActiveWindow) historyActiveWindow.textContent = switchPayload.target;
       if (historyLayer.classList.contains('show')) {
         setTimeout(showChatHistory, 500);
       }
-      setTimeout(loadSnapshot, 1200);
-      setTimeout(fetchAppState, 1500);
+      setTimeout(loadSnapshot, 300);
+      setTimeout(fetchAppState, 600);
     });
   } catch (error) {
     showSlideInNotification(error.message, 'error');
@@ -2453,9 +2457,12 @@ async function launchNewWindow() {
   }
 }
 
-function handleCDPStatus(status) {
+function handleCDPStatus(status, targetTitle) {
   if (status === 'connected') {
     updateStatus(true);
+    if (targetTitle && targetText) {
+      targetText.textContent = targetTitle;
+    }
     loadSnapshot();
   } else if (status === 'reconnecting') {
     updateStatus(false);
@@ -2837,7 +2844,7 @@ function connectWebSocket() {
         renderActionCard(null);
         break;
       case 'cdp_status':
-        handleCDPStatus(data.status);
+        handleCDPStatus(data.status, data.targetTitle);
         break;
       case 'status_test':
         if (isDevMode) {

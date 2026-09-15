@@ -39,7 +39,7 @@ import * as state from './state.js';
 import { getLocalIP, isLocalRequest, getJson } from './utils/network.js';
 import { killPortProcess, launchAntigravity } from './utils/process.js';
 import { hashString } from './utils/hash.js';
-import { discoverCDP, discoverAllCDP, connectCDP, initCDP } from './cdp/connection.js';
+import { discoverCDP, discoverAllCDP, connectCDP, initCDP, probeTargetHealth } from './cdp/connection.js';
 import { inspectUI } from './ui_inspector.js';
 import { sessionStats } from './session-stats.js';
 import { quotaService } from './quota-service.js';
@@ -90,6 +90,7 @@ let availableTargets = [];
 
 /** @type {string | null} */
 let activeTargetId = null;
+let isSwitchingTarget = false;
 
 /** @type {string} */
 let AUTH_TOKEN = 'ag_default_token';
@@ -467,6 +468,26 @@ function broadcast(payload) {
             client._slowSince = null;
             client.send(serialized);
         }
+    });
+}
+
+/**
+ * Broadcast CDP status to all mobile clients
+ * @param {string} status
+ * @param {string | null} [targetId]
+ * @param {string | null} [targetTitle]
+ */
+function broadcastCDPStatus(status, targetId = activeTargetId, targetTitle = null) {
+    if (!targetTitle && targetId && availableTargets) {
+        const found = availableTargets.find(t => t.id === targetId);
+        if (found) targetTitle = found.title;
+    }
+    broadcast({
+        type: 'cdp_status',
+        status,
+        targetId: targetId || undefined,
+        targetTitle: targetTitle || undefined,
+        timestamp: new Date().toISOString()
     });
 }
 
@@ -3093,23 +3114,28 @@ async function startPolling(wss) {
         });
     }, 30000);
 
-    // Broadcast CDP status to all mobile clients
-    /** @param {string} status */
-function broadcastCDPStatus(status) {
-        broadcast({ type: 'cdp_status', status, timestamp: new Date().toISOString() });
-    }
-
     const poll = async () => {
+        // If a window target switch is actively occurring, yield and do not interfere
+        if (isSwitchingTarget) {
+            setTimeout(poll, 1000);
+            return;
+        }
+
         // Periodically refresh available targets list (multi-window)
         try {
             availableTargets = await discoverAllCDP();
             if (!activeTargetId && availableTargets.length > 0) {
                 const currentMatch = cdpConnection?.ws?.url ? availableTargets.find(t => t.wsUrl === cdpConnection.ws.url) : null;
                 activeTargetId = currentMatch ? currentMatch.id : availableTargets[0].id;
+                state.setActiveTargetId(activeTargetId);
             }
         } catch (e) { /* ignore */ }
 
         if (!cdpConnection || (cdpConnection.ws && cdpConnection.ws.readyState !== WebSocket.OPEN)) {
+            if (isSwitchingTarget) {
+                setTimeout(poll, 1000);
+                return;
+            }
             if (!isConnecting) {
                 console.log('🔍 Looking for Antigravity CDP connection...');
                 isConnecting = true;
@@ -3119,9 +3145,29 @@ function broadcastCDPStatus(status) {
                 console.log('🔄 CDP connection lost. Attempting to reconnect...');
                 await stopScreencast();
                 cdpConnection = null;
+                state.setCdpConnection(null);
             }
             try {
-                cdpConnection = await initCDP();
+                // If a specific window target was previously active, try reconnecting to it first!
+                if (activeTargetId) {
+                    try {
+                        availableTargets = await discoverAllCDP();
+                        const preferredTarget = availableTargets.find(t => t.id === activeTargetId);
+                        if (preferredTarget?.wsUrl) {
+                            const isHealthy = await probeTargetHealth(preferredTarget.wsUrl);
+                            if (isHealthy) {
+                                console.log(`🔌 Reconnecting to active window target: ${preferredTarget.title}...`);
+                                cdpConnection = await connectCDP(preferredTarget.wsUrl);
+                                state.setCdpConnection(cdpConnection);
+                            }
+                        }
+                    } catch (_) {}
+                }
+
+                if (!cdpConnection) {
+                    cdpConnection = await initCDP();
+                }
+
                 if (cdpConnection) {
                     console.log('✅ CDP Connection established from polling loop');
                     isConnecting = false;
@@ -5333,33 +5379,73 @@ export async function createServer() {
         const { targetId } = req.body;
         if (!targetId) return res.status(400).json({ error: 'targetId required' });
 
-        // Refresh available targets in case new windows opened
-        if (!availableTargets.some(t => t.id === targetId)) {
+        if (isSwitchingTarget) {
+            return res.status(409).json({ error: 'A target switch is already in progress' });
+        }
+
+        isSwitchingTarget = true;
+        try {
+            // Refresh available targets in case new windows opened
             try {
                 availableTargets = await discoverAllCDP();
             } catch (_) {}
-        }
 
-        const target = availableTargets.find(t => t.id === targetId);
-        if (!target) return res.status(404).json({ error: 'Target not found. Refresh targets.' });
+            const target = availableTargets.find(t => t.id === targetId);
+            if (!target) {
+                return res.status(404).json({ error: 'Target not found. Refresh targets.' });
+            }
 
-        try {
             // Close existing connection
             if (cdpConnection?.ws) {
                 await stopScreencast();
-                cdpConnection.ws.close();
+                try {
+                    cdpConnection.ws.close();
+                } catch (_) {}
                 cdpConnection = null;
+                state.setCdpConnection(null);
             }
 
             console.log(`🔀 Switching to target: ${target.title} (port ${target.port})`);
             cdpConnection = await connectCDP(target.wsUrl);
+            state.setCdpConnection(cdpConnection);
             activeTargetId = targetId;
+            state.setActiveTargetId(targetId);
             lastSnapshot = null;
             lastSnapshotHash = null;
             console.log(`✅ Connected to: ${target.title}`);
-            res.json({ success: true, target: target.title });
-        } catch (e) { const err = /** @type {Error} */ (e);
+
+            // Broadcast CDP status with target details
+            broadcastCDPStatus('connected', target.id, target.title);
+
+            // Immediately capture and broadcast a fresh snapshot from the target window
+            let freshSnapshot = null;
+            try {
+                freshSnapshot = await captureSnapshot(cdpConnection);
+                if (freshSnapshot && !freshSnapshot.error) {
+                    lastSnapshot = freshSnapshot;
+                    lastSnapshotHash = hashString(freshSnapshot.html);
+                    state.setLastSnapshot(freshSnapshot);
+
+                    broadcast({
+                        type: 'snapshot_update',
+                        snapshot: freshSnapshot
+                    });
+                }
+            } catch (snapErr) {
+                console.warn('Failed to capture initial snapshot after target switch:', snapErr.message);
+            }
+
+            res.json({
+                success: true,
+                target: target.title,
+                targetId: target.id,
+                snapshot: freshSnapshot
+            });
+        } catch (e) {
+            const err = /** @type {Error} */ (e);
             res.status(500).json({ error: `Failed to connect: ${err.message}` });
+        } finally {
+            isSwitchingTarget = false;
         }
     });
 
@@ -5414,24 +5500,25 @@ export async function createServer() {
                 });
 
                 if (matchTarget && matchTarget.id !== activeTargetId) {
+                    isSwitchingTarget = true;
                     try {
                         if (cdpConnection?.ws) {
                             await stopScreencast();
-                            cdpConnection.ws.close();
+                            try { cdpConnection.ws.close(); } catch (_) {}
                             cdpConnection = null;
+                            state.setCdpConnection(null);
                         }
                         console.log(`🔀 Auto-switching window to match conversation workspace: ${matchTarget.title}`);
                         cdpConnection = await connectCDP(matchTarget.wsUrl);
+                        state.setCdpConnection(cdpConnection);
                         activeTargetId = matchTarget.id;
+                        state.setActiveTargetId(matchTarget.id);
                         switchedTarget = matchTarget.title;
-                        broadcast({
-                            type: 'cdp_status',
-                            status: 'connected',
-                            targetId: matchTarget.id,
-                            targetTitle: matchTarget.title
-                        });
+                        broadcastCDPStatus('connected', matchTarget.id, matchTarget.title);
                     } catch (swErr) {
                         console.warn('Auto target switch failed, continuing with current window:', swErr.message);
+                    } finally {
+                        isSwitchingTarget = false;
                     }
                 }
             }
