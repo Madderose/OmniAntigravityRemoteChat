@@ -2415,46 +2415,179 @@ async function showTargetSelector() {
   try {
     const response = await fetchWithAuth('/cdp-targets');
     const payload = await response.json();
-    const options = (payload.targets || []).map((target) => ({
-      label:
-        target.id === payload.activeTarget
-          ? `Active · ${target.title}`
-          : target.title,
-      value: target.id,
-    }));
-    options.push({ label: 'Launch new window', value: '__launch__' });
+    const targets = payload.targets || [];
+    const activeTargetId = payload.activeTarget;
 
-    openModal('Select Antigravity Window', options, async (targetId) => {
-      if (targetId === '__launch__') {
-        await launchNewWindow();
-        return;
-      }
+    modalTitle.textContent = 'Antigravity Windows';
+    modalList.innerHTML = '';
 
-      const switchResponse = await fetchWithAuth('/select-target', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId }),
+    if (targets.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'window-target-meta';
+      emptyDiv.style.padding = '12px';
+      emptyDiv.textContent = 'No active Antigravity windows detected.';
+      modalList.appendChild(emptyDiv);
+    }
+
+    targets.forEach((target) => {
+      const isActive = target.id === activeTargetId;
+      const card = document.createElement('div');
+      card.className = `window-target-item${isActive ? ' active' : ''}`;
+
+      const mainDiv = document.createElement('div');
+      mainDiv.className = 'window-target-main';
+      mainDiv.title = 'Switch to this window';
+
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'window-target-title';
+      titleDiv.textContent = target.title || 'Antigravity IDE';
+      mainDiv.appendChild(titleDiv);
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'window-target-meta';
+      metaDiv.innerHTML = `<span>Port ${target.port}</span>` + (isActive ? '<span style="color:var(--primary);font-weight:600;">● Active</span>' : '');
+      mainDiv.appendChild(metaDiv);
+
+      mainDiv.addEventListener('click', async () => {
+        closeModal();
+        if (isActive) return;
+        try {
+          const switchResponse = await fetchWithAuth('/select-target', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetId: target.id }),
+          });
+          const switchPayload = await switchResponse.json();
+          if (!switchPayload.success) {
+            throw new Error(switchPayload.error || 'Window switch failed');
+          }
+          if (targetText) targetText.textContent = switchPayload.target;
+          if (switchPayload.snapshot) {
+            renderSnapshot(switchPayload.snapshot);
+          }
+          showSlideInNotification(`Switched to: ${switchPayload.target}`, 'success');
+          const historyActiveWindow = document.getElementById('historyActiveWindow');
+          if (historyActiveWindow) historyActiveWindow.textContent = switchPayload.target;
+          if (historyLayer.classList.contains('show')) {
+            setTimeout(showChatHistory, 500);
+          }
+          setTimeout(loadSnapshot, 300);
+          setTimeout(fetchAppState, 600);
+        } catch (err) {
+          showSlideInNotification(err.message, 'error');
+        }
       });
-      const switchPayload = await switchResponse.json();
-      if (!switchPayload.success) {
-        throw new Error(switchPayload.error || 'Window switch failed');
+      card.appendChild(mainDiv);
+
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'window-target-actions';
+
+      if (isActive) {
+        const activeBadge = document.createElement('span');
+        activeBadge.className = 'modal-option-badge active';
+        activeBadge.textContent = 'Active';
+        actionsDiv.appendChild(activeBadge);
       }
-      targetText.textContent = switchPayload.target;
-      if (switchPayload.snapshot) {
-        renderSnapshot(switchPayload.snapshot);
-      }
-      showSlideInNotification(`Switched to: ${switchPayload.target}`, 'success');
-      const historyActiveWindow = document.getElementById('historyActiveWindow');
-      if (historyActiveWindow) historyActiveWindow.textContent = switchPayload.target;
-      if (historyLayer.classList.contains('show')) {
-        setTimeout(showChatHistory, 500);
-      }
-      setTimeout(loadSnapshot, 300);
-      setTimeout(fetchAppState, 600);
+
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'window-close-btn';
+      closeBtn.type = 'button';
+      closeBtn.title = 'Close this window';
+      closeBtn.textContent = '✕';
+      closeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await requestCloseWindow(target);
+      });
+      actionsDiv.appendChild(closeBtn);
+
+      card.appendChild(actionsDiv);
+      modalList.appendChild(card);
     });
+
+    // Launch new window option
+    const launchBtn = document.createElement('button');
+    launchBtn.className = 'modal-option';
+    launchBtn.type = 'button';
+    launchBtn.style.marginTop = '6px';
+    launchBtn.innerHTML = '<span class="modal-option-label">+ Launch new window</span>';
+    launchBtn.addEventListener('click', async () => {
+      closeModal();
+      await launchNewWindow();
+    });
+    modalList.appendChild(launchBtn);
+
+    modalOverlay.classList.add('show');
   } catch (error) {
     showSlideInNotification(error.message, 'error');
   }
+}
+
+async function requestCloseWindow(target, force = false) {
+  try {
+    const res = await fetchWithAuth('/api/close-window', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId: target.id, force })
+    });
+    const payload = await res.json();
+
+    if (payload.requiresConfirmation) {
+      showCloseWindowConfirmation(target, payload.message);
+      return;
+    }
+
+    if (!payload.success) {
+      throw new Error(payload.error || 'Failed to close window');
+    }
+
+    if (payload.isDisconnected) {
+      showSlideInNotification('Antigravity IDE closed. Remote connection offline.', 'warning');
+      closeModal();
+      updateStatus(false);
+    } else {
+      showSlideInNotification(`Closed window: ${payload.title || target.title}`, 'success');
+      await showTargetSelector();
+    }
+  } catch (err) {
+    showSlideInNotification(err.message, 'error');
+  }
+}
+
+function showCloseWindowConfirmation(target, message) {
+  modalTitle.textContent = '⚠️ Fermer la dernière fenêtre ?';
+  modalList.innerHTML = '';
+
+  const dialog = document.createElement('div');
+  dialog.className = 'window-confirm-dialog';
+
+  const text = document.createElement('div');
+  text.className = 'window-confirm-text';
+  text.textContent = message || "Attention : il s'agit de la dernière fenêtre active d'Antigravity IDE. La fermer va quitter l'application Antigravity sur votre machine et interrompre la connexion avec OmniAntigravity Remote Chat.";
+  dialog.appendChild(text);
+
+  const actions = document.createElement('div');
+  actions.className = 'window-confirm-actions';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'window-confirm-cancel';
+  cancelBtn.textContent = 'Annuler';
+  cancelBtn.addEventListener('click', () => {
+    showTargetSelector();
+  });
+  actions.appendChild(cancelBtn);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'window-confirm-danger';
+  confirmBtn.textContent = 'Fermer (Quitter)';
+  confirmBtn.addEventListener('click', async () => {
+    await requestCloseWindow(target, true);
+  });
+  actions.appendChild(confirmBtn);
+
+  dialog.appendChild(actions);
+  modalList.appendChild(dialog);
 }
 
 async function launchNewWindow() {

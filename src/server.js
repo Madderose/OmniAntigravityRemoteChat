@@ -1174,12 +1174,15 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
 
             // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy
             if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
-                const hasNewlines = textToInsert.includes("\n");
+                const LF = String.fromCharCode(10);
+                const CR = String.fromCharCode(13);
+                const hasNewlines = textToInsert.indexOf(LF) !== -1;
                 if (hasNewlines) {
                     editor.innerHTML = textToInsert
-                        .split(/\r?\n/)
+                        .split(LF)
                         .map(function(line) {
-                            var safe = line ? line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
+                            var cleanLine = line.split(CR).join('');
+                            var safe = cleanLine ? cleanLine.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
                             return '<p dir="ltr"><span data-lexical-text="true">' + safe + '</span></p>';
                         })
                         .join('');
@@ -1196,9 +1199,17 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
             // Staging check (Lexical input boundary verification)
             // Credit: Kelvin Tan (@kelverssg)
             const editorText = editor.innerText || editor.textContent || "";
-            const normalizeForStaging = value => value.replace(/[\s\\\x60]/g, '');
-            const actual = normalizeForStaging(editorText);
-            const expected = normalizeForStaging(textToInsert);
+            const cleanStaging = function(val) {
+                return (val || "")
+                    .split(String.fromCharCode(32)).join("")
+                    .split(String.fromCharCode(9)).join("")
+                    .split(String.fromCharCode(10)).join("")
+                    .split(String.fromCharCode(13)).join("")
+                    .split(String.fromCharCode(92)).join("")
+                    .split(String.fromCharCode(96)).join("");
+            };
+            const actual = cleanStaging(editorText);
+            const expected = cleanStaging(textToInsert);
             const minExpected = Math.floor(expected.length * 0.85);
             const head = expected.slice(0, Math.min(80, expected.length));
             const tail = expected.slice(Math.max(0, expected.length - 80));
@@ -1269,61 +1280,78 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
         return { ok: false, error: "send_button_not_ready", domStatus: "button_disabled", reason: "Send button is disabled or not found" };
     })()`;
 
-    // Target the main (default) execution context first and exclusively for DOM submissions
-    const defaultCtx = cdp.contexts?.find(c => c.auxData?.isDefault) || cdp.contexts?.[0];
-    if (defaultCtx) {
+    // Helper to evaluate in a context (or top-level if contextId is undefined)
+    const evalInContext = async (contextId) => {
         try {
-            const result = await cdp.call("Runtime.evaluate", {
+            const params = {
                 expression: EXPRESSION,
                 returnByValue: true,
                 awaitPromise: true,
-                contextId: defaultCtx.id,
                 timeout: 5000
-            });
-
-            if (result.result && result.result.value) {
-                const val = result.result.value;
-                // If Enter was dispatched via DOM, also ensure hardware-level Enter key event via CDP
-                if (val.method === "enter_keypress") {
-                    try {
-                        await cdp.call("Input.dispatchKeyEvent", {
-                            type: "rawKeyDown",
-                            key: "Enter",
-                            code: "Enter",
-                            windowsVirtualKeyCode: 13,
-                            nativeVirtualKeyCode: 13,
-                            unmodifiedText: "\r",
-                            text: "\r"
-                        });
-                        await cdp.call("Input.dispatchKeyEvent", {
-                            type: "keyUp",
-                            key: "Enter",
-                            code: "Enter",
-                            windowsVirtualKeyCode: 13,
-                            nativeVirtualKeyCode: 13
-                        });
-                    } catch (_) {}
-                }
-                return val;
+            };
+            if (contextId !== undefined) {
+                params.contextId = contextId;
             }
+            const result = await cdp.call("Runtime.evaluate", params);
+            if (result.exceptionDetails) {
+                console.error(`[InjectMessage] Exception in context ${contextId ?? 'top-level'}:`, result.exceptionDetails.text, result.exceptionDetails.exception?.description);
+                return null;
+            }
+            return result.result?.value || null;
         } catch (e) {
-            console.warn("[InjectMessage] Default context evaluate failed:", e.message);
+            console.warn(`[InjectMessage] Evaluate failed in context ${contextId ?? 'top-level'}:`, e.message);
+            return null;
+        }
+    };
+
+    const handleEnterHardwareKey = async (val) => {
+        if (val && val.method === "enter_keypress") {
+            try {
+                await cdp.call("Input.dispatchKeyEvent", {
+                    type: "rawKeyDown",
+                    key: "Enter",
+                    code: "Enter",
+                    windowsVirtualKeyCode: 13,
+                    nativeVirtualKeyCode: 13,
+                    unmodifiedText: "\r",
+                    text: "\r"
+                });
+                await cdp.call("Input.dispatchKeyEvent", {
+                    type: "keyUp",
+                    key: "Enter",
+                    code: "Enter",
+                    windowsVirtualKeyCode: 13,
+                    nativeVirtualKeyCode: 13
+                });
+            } catch (_) {}
+        }
+    };
+
+    // Target the main (default) execution context first
+    const defaultCtx = cdp.contexts?.find(c => c.auxData?.isDefault) || cdp.contexts?.[0];
+    if (defaultCtx) {
+        const val = await evalInContext(defaultCtx.id);
+        if (val) {
+            await handleEnterHardwareKey(val);
+            return val;
         }
     }
 
-    // Fallback: evaluate in remaining execution contexts
+    // Fallback 1: evaluate without contextId (CDP uses the inspected page's main execution context)
+    const directVal = await evalInContext(undefined);
+    if (directVal) {
+        await handleEnterHardwareKey(directVal);
+        return directVal;
+    }
+
+    // Fallback 2: evaluate in remaining execution contexts
     for (const ctx of (cdp.contexts || [])) {
         if (ctx.id === defaultCtx?.id) continue;
-        try {
-            const result = await cdp.call("Runtime.evaluate", {
-                expression: EXPRESSION,
-                returnByValue: true,
-                awaitPromise: true,
-                contextId: ctx.id,
-                timeout: 5000
-            });
-            if (result.result?.value) return result.result.value;
-        } catch {}
+        const val = await evalInContext(ctx.id);
+        if (val) {
+            await handleEnterHardwareKey(val);
+            return val;
+        }
     }
 
     return { ok: false, reason: "no_context", domStatus: "attempted" };
@@ -4605,7 +4633,15 @@ export async function createServer() {
                         composedPrompt += (composedPrompt ? '\n\n' : '') + `[Voice memo: ${savedAudio.fileName}](${savedAudio.absolutePath})`;
                     }
 
-                    injection = await injectMessage(cdpConnection, composedPrompt);
+                    const lockOutcome = await withSendLock(async () => {
+                        let res = await injectMessage(cdpConnection, composedPrompt);
+                        if (!res?.ok && (res?.error === 'editor_not_found' || res?.reason === 'no_context')) {
+                            console.log('[Upload-Media] Primary target injection failed, attempting injectMessageAnyTab');
+                            res = await injectMessageAnyTab(composedPrompt);
+                        }
+                        return res;
+                    });
+                    injection = lockOutcome.result || lockOutcome;
 
                     // Clean up file input if used
                     try {
@@ -4765,7 +4801,15 @@ export async function createServer() {
                             ? `${composedPrompt}\n\n[Attached image: ${saved.fileName}](${saved.absolutePath})`
                             : `[Attached image: ${saved.fileName}](${saved.absolutePath})`;
                     }
-                    injection = await injectMessage(cdpConnection, composedPrompt);
+                    const lockOutcome = await withSendLock(async () => {
+                        let res = await injectMessage(cdpConnection, composedPrompt);
+                        if (!res?.ok && (res?.error === 'editor_not_found' || res?.reason === 'no_context')) {
+                            console.log('[Upload-Image] Primary target injection failed, attempting injectMessageAnyTab');
+                            res = await injectMessageAnyTab(composedPrompt);
+                        }
+                        return res;
+                    });
+                    injection = lockOutcome.result || lockOutcome;
 
                     // Clean up file input after injection so stale files do not linger
                     try {
@@ -4853,7 +4897,15 @@ export async function createServer() {
                     const voiceLink = `[Voice memo: ${saved.fileName}](${saved.absolutePath})`;
                     const composedPrompt = userPrompt ? `${userPrompt}\n\n${voiceLink}` : voiceLink;
 
-                    injection = await injectMessage(cdpConnection, composedPrompt);
+                    const lockOutcome = await withSendLock(async () => {
+                        let res = await injectMessage(cdpConnection, composedPrompt);
+                        if (!res?.ok && (res?.error === 'editor_not_found' || res?.reason === 'no_context')) {
+                            console.log('[Upload-Audio] Primary target injection failed, attempting injectMessageAnyTab');
+                            res = await injectMessageAnyTab(composedPrompt);
+                        }
+                        return res;
+                    });
+                    injection = lockOutcome.result || lockOutcome;
                 } else {
                     injection = { ok: true, staged: true, attachedNatively: false };
                 }
@@ -5340,6 +5392,142 @@ export async function createServer() {
             res.status(500).json({ error: `Failed to connect: ${err.message}` });
         } finally {
             isSwitchingTarget = false;
+        }
+    });
+
+    // Multi-Window: Close a specific Antigravity window / target
+    app.post('/api/close-window', async (req, res) => {
+        const { targetId, force = false } = req.body || {};
+        if (!targetId) return res.status(400).json({ error: 'targetId required' });
+
+        try {
+            // Discover current targets across all ports
+            try {
+                availableTargets = await discoverAllCDP();
+            } catch (_) {}
+
+            const workbenchTargets = availableTargets.filter(t => t.type === 'workbench');
+            const targetToClose = availableTargets.find(t => t.id === targetId);
+
+            if (!targetToClose) {
+                return res.status(404).json({ error: 'Target window not found' });
+            }
+
+            const isLastWindow = workbenchTargets.length <= 1;
+
+            if (isLastWindow && !force) {
+                return res.json({
+                    success: false,
+                    requiresConfirmation: true,
+                    isLastWindow: true,
+                    targetId,
+                    title: targetToClose.title,
+                    message: "Attention : il s'agit de la dernière fenêtre active d'Antigravity IDE. La fermer va quitter l'application Antigravity sur votre machine et interrompre la connexion avec OmniAntigravity Remote Chat. Voulez-vous vraiment la fermer ?"
+                });
+            }
+
+            // Extract port and raw target ID
+            const [portStr, rawId] = targetId.split(':');
+            const port = parseInt(portStr, 10) || targetToClose.port || 7800;
+
+            console.log(`[close-window] Closing target ${targetToClose.title} (${targetId}) - isLastWindow: ${isLastWindow}, force: ${force}`);
+
+            let closedSuccessfully = false;
+
+            // Method 1: Chrome DevTools HTTP /json/close endpoint
+            try {
+                const closeRes = await fetch(`http://127.0.0.1:${port}/json/close/${rawId}`);
+                if (closeRes.ok || closeRes.status === 200) {
+                    closedSuccessfully = true;
+                }
+            } catch (httpErr) {
+                console.warn('[close-window] HTTP /json/close failed:', httpErr.message);
+            }
+
+            // Method 2: Fallback to CDP window.close()
+            if (!closedSuccessfully) {
+                try {
+                    let tempConn = null;
+                    if (targetId === activeTargetId && cdpConnection?.ws?.readyState === WebSocket.OPEN) {
+                        tempConn = cdpConnection;
+                    } else {
+                        tempConn = await connectCDP(targetToClose.wsUrl);
+                    }
+                    await tempConn.call('Runtime.evaluate', {
+                        expression: 'window.close()',
+                        returnByValue: true
+                    });
+                    closedSuccessfully = true;
+                    if (tempConn !== cdpConnection) {
+                        try { tempConn.ws.close(); } catch (_) {}
+                    }
+                } catch (cdpErr) {
+                    console.warn('[close-window] CDP window.close() failed:', cdpErr.message);
+                }
+            }
+
+            // Wait brief moment for process/window to terminate
+            await new Promise(r => setTimeout(r, 600));
+
+            // Re-discover remaining targets
+            try {
+                availableTargets = await discoverAllCDP();
+            } catch (_) {
+                availableTargets = [];
+            }
+
+            const remainingWorkbenches = availableTargets.filter(t => t.type === 'workbench');
+
+            // If the closed target was the active target:
+            if (targetId === activeTargetId) {
+                if (remainingWorkbenches.length > 0) {
+                    const nextTarget = remainingWorkbenches[0];
+                    console.log(`[close-window] Automatically switching to remaining window: ${nextTarget.title}`);
+                    if (cdpConnection?.ws) {
+                        try { cdpConnection.ws.close(); } catch (_) {}
+                    }
+                    cdpConnection = await connectCDP(nextTarget.wsUrl);
+                    state.setCdpConnection(cdpConnection);
+                    activeTargetId = nextTarget.id;
+                    state.setActiveTargetId(nextTarget.id);
+                    broadcastCDPStatus('connected', nextTarget.id, nextTarget.title);
+
+                    try {
+                        const freshSnapshot = await captureSnapshot(cdpConnection);
+                        if (freshSnapshot && !freshSnapshot.error) {
+                            lastSnapshot = freshSnapshot;
+                            lastSnapshotHash = hashString(freshSnapshot.html);
+                            state.setLastSnapshot(freshSnapshot);
+                            broadcast({ type: 'snapshot_update', snapshot: freshSnapshot });
+                        }
+                    } catch (_) {}
+                } else {
+                    console.log('[close-window] Last window closed. Antigravity disconnected.');
+                    if (cdpConnection?.ws) {
+                        try { cdpConnection.ws.close(); } catch (_) {}
+                    }
+                    cdpConnection = null;
+                    state.setCdpConnection(null);
+                    activeTargetId = null;
+                    state.setActiveTargetId(null);
+                    lastSnapshot = null;
+                    lastSnapshotHash = null;
+                    broadcastCDPStatus('disconnected', null, null);
+                }
+            }
+
+            res.json({
+                success: true,
+                closedTargetId: targetId,
+                title: targetToClose.title,
+                remainingTargets: availableTargets,
+                activeTarget: activeTargetId,
+                isDisconnected: !cdpConnection
+            });
+        } catch (e) {
+            const err = /** @type {Error} */ (e);
+            console.error('[close-window] Error:', err);
+            res.status(500).json({ error: `Failed to close window: ${err.message}` });
         }
     });
 
