@@ -188,6 +188,32 @@
         </div>
       </div>
 
+      <!-- Window Badge & Multi-Conversation Tab Bar -->
+      <div class="window-conversation-bar" id="windowConversationBar">
+        <div class="window-target-anchor">
+          <button class="window-target-badge" id="windowTargetBadge" title="IDE Window — Tap to switch" type="button">
+            <span class="window-badge-icon">🪟</span>
+            <span class="window-badge-title" id="windowBadgeTitle">Loading...</span>
+            <span class="window-badge-chevron">▾</span>
+          </button>
+          <div class="window-target-dropdown" id="windowTargetDropdown" hidden>
+            <div class="window-dropdown-header">IDE Windows</div>
+            <div class="window-dropdown-list" id="windowDropdownList"></div>
+          </div>
+        </div>
+        <div class="conversation-tabs-scroll" id="conversationTabsScroll">
+          <div class="conversation-tabs" id="conversationTabs"></div>
+          <button class="conversation-tab-add" id="conversationTabAddBtn" title="Add conversation tab" type="button">+</button>
+        </div>
+        <div class="conversation-picker-dropdown" id="conversationPickerDropdown" hidden>
+          <div class="conversation-picker-header">
+            <span>Conversations for this window</span>
+            <button class="conversation-picker-close" id="conversationPickerCloseBtn" type="button">✕</button>
+          </div>
+          <div class="conversation-picker-list" id="conversationPickerList"></div>
+        </div>
+      </div>
+
       <div class="ssl-banner" id="sslBanner">
         <span>Not secure yet. Enable HTTPS for clipboard and PWA install quality.</span>
         <div class="screen-actions">

@@ -65,7 +65,9 @@ import {
     saveUploadedAudio,
     terminalManager,
     workspaceRoot,
-    uploadsDir
+    uploadsDir,
+    cleanWindowTitle,
+    getConversationStatus
 } from './utils/workspace.js';
 import {
     aiSupervisor,
@@ -5724,9 +5726,19 @@ export async function createServer() {
                 activeTargetId = currentMatch ? currentMatch.id : availableTargets[0].id;
             }
         } catch (_) {}
+        const currentTarget = availableTargets?.find(t => t.id === activeTargetId);
+        const currentTargetTitle = currentTarget?.title || null;
+        const windowTitle = cleanWindowTitle(currentTargetTitle || '');
+
         res.json({
-            targets: availableTargets,
+            targets: availableTargets.map(t => ({
+                ...t,
+                cleanTitle: cleanWindowTitle(t.title),
+                active: t.id === activeTargetId
+            })),
             activeTarget: activeTargetId,
+            currentTargetTitle,
+            windowTitle,
             connected: !!cdpConnection
         });
     });
@@ -5950,11 +5962,52 @@ export async function createServer() {
         res.json(result);
     });
 
-    // Get App State
+    // Get App State & Active Window Info
     app.get('/app-state', async (req, res) => {
-        if (!cdpConnection) return res.json({ mode: 'Unknown', model: 'Unknown' });
+        const currentTarget = availableTargets?.find(t => t.id === activeTargetId);
+        const currentTargetTitle = currentTarget?.title || null;
+        const windowTitle = cleanWindowTitle(currentTargetTitle || '');
+        const targets = (availableTargets || []).map(t => ({
+            id: t.id,
+            title: t.title,
+            cleanTitle: cleanWindowTitle(t.title),
+            active: t.id === activeTargetId,
+            port: t.port
+        }));
+
+        if (!cdpConnection) {
+            return res.json({
+                mode: 'Unknown',
+                model: 'Unknown',
+                activeTargetId,
+                currentTargetTitle,
+                windowTitle,
+                targets
+            });
+        }
         const result = await getAppState(cdpConnection);
-        res.json(result);
+        res.json({
+            ...result,
+            activeTargetId,
+            currentTargetTitle,
+            windowTitle,
+            targets
+        });
+    });
+
+    // Fast batch status check for conversations (stepIndex, updatedAt)
+    app.get('/api/conversations/status', async (req, res) => {
+        try {
+            const ids = req.query.ids ? String(req.query.ids).split(',').map(s => s.trim()).filter(Boolean) : [];
+            const statuses = {};
+            for (const id of ids) {
+                const status = await getConversationStatus(id);
+                if (status) statuses[status.chatId] = status;
+            }
+            res.json({ success: true, statuses });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
     });
 
     // Start New Chat

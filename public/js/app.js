@@ -86,6 +86,17 @@ const recordingTimer = document.getElementById('recordingTimer');
 const cancelRecordBtn = document.getElementById('cancelRecordBtn');
 const doneRecordBtn = document.getElementById('doneRecordBtn');
 const stagedMediaSlot = document.getElementById('stagedMediaSlot');
+const windowConversationBar = document.getElementById('windowConversationBar');
+const windowTargetAnchor = document.querySelector('.window-target-anchor');
+const windowTargetBadge = document.getElementById('windowTargetBadge');
+const windowBadgeTitle = document.getElementById('windowBadgeTitle');
+const windowTargetDropdown = document.getElementById('windowTargetDropdown');
+const windowDropdownList = document.getElementById('windowDropdownList');
+const conversationTabs = document.getElementById('conversationTabs');
+const conversationTabAddBtn = document.getElementById('conversationTabAddBtn');
+const conversationPickerDropdown = document.getElementById('conversationPickerDropdown');
+const conversationPickerList = document.getElementById('conversationPickerList');
+const conversationPickerCloseBtn = document.getElementById('conversationPickerCloseBtn');
 
 const state = {
   ws: null,
@@ -2527,6 +2538,9 @@ async function fetchAppState() {
     if (payload.model && payload.model !== 'Unknown') {
       modelText.textContent = payload.model;
     }
+    if (payload.windowTitle) {
+      handleWindowStateUpdate(payload.windowTitle, payload.activeTargetId, payload.targets);
+    }
   } catch (_) {}
 }
 
@@ -2749,6 +2763,7 @@ async function startNewChat() {
       state.chatIsOpen = true;
       setTimeout(loadSnapshot, 400);
       setTimeout(checkChatStatus, 1000);
+      setTimeout(refreshTabsAfterNewChat, 1200);
     } else {
       showSlideInNotification(payload.error || 'Failed to create new chat.', 'error');
     }
@@ -2886,6 +2901,7 @@ async function selectChat(title, chatId, workspace) {
       if (historyActiveWindow) historyActiveWindow.textContent = payload.switchedTarget;
       if (targetText) targetText.textContent = payload.switchedTarget;
     }
+    handleChatSelected(title, chatId, workspace, payload.switchedTarget);
     if (payload.snapshot && payload.snapshot.html) {
       renderSnapshot(payload.snapshot, { forceScrollBottom: true });
     } else {
@@ -4146,6 +4162,544 @@ function setupTouchGestures() {
   }, { passive: true });
 }
 
+// ─── Window Target & Conversation Tabs Manager ───────────────────────
+const STORAGE_KEY_TABS = 'omni_tabs_by_window_v1';
+const STORAGE_KEY_UNREAD = 'omni_unread_state_v1';
+
+let currentActiveWindow = null;
+let currentActiveTargetId = null;
+let currentActiveChatId = null;
+let availableWindowTargets = [];
+let isTabsInitialized = false;
+
+function cleanWindowTitleClient(title) {
+  if (!title || typeof title !== 'string') return 'Antigravity IDE';
+  const clean = title.split(' - Antigravity IDE')[0].trim();
+  if (clean) return clean;
+  return title.split(' - ')[0].trim() || 'Antigravity IDE';
+}
+
+function getCleanChatId(id) {
+  if (!id) return '';
+  return String(id).replace(/^fastpick-item-/, '').trim();
+}
+
+function getStoredTabs() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_TABS) || '{}');
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveStoredTabs(tabsMap) {
+  try {
+    localStorage.setItem(STORAGE_KEY_TABS, JSON.stringify(tabsMap));
+  } catch (_) {}
+}
+
+function getStoredUnread() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_UNREAD) || '{}');
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveStoredUnread(unreadMap) {
+  try {
+    localStorage.setItem(STORAGE_KEY_UNREAD, JSON.stringify(unreadMap));
+  } catch (_) {}
+}
+
+function markChatAsRead(chatId, latestStep) {
+  const cleanId = getCleanChatId(chatId);
+  if (!cleanId) return;
+  const unreadMap = getStoredUnread();
+  const entry = unreadMap[cleanId] || { lastSeenStep: 0, unreadCount: 0 };
+  if (typeof latestStep === 'number') {
+    entry.lastSeenStep = Math.max(entry.lastSeenStep || 0, latestStep);
+  }
+  // STRICT CONSTRAINT: When conversation is opened, unread count is reset to 0 in localStorage
+  entry.unreadCount = 0;
+  unreadMap[cleanId] = entry;
+  saveStoredUnread(unreadMap);
+  updateTabUnreadBadgeUI(cleanId, 0);
+}
+
+function updateTabUnreadBadgeUI(chatId, count) {
+  const cleanId = getCleanChatId(chatId);
+  if (!conversationTabs) return;
+  const tabEl = conversationTabs.querySelector(`[data-chat-id="${cleanId}"]`);
+  if (!tabEl) return;
+  const badge = tabEl.querySelector('.tab-unread-badge');
+  if (badge) {
+    const num = Math.max(0, count || 0);
+    badge.setAttribute('data-count', String(num));
+    badge.textContent = num > 99 ? '99+' : (num > 0 ? String(num) : '');
+  }
+}
+
+function handleWindowStateUpdate(rawTitle, targetId, targets) {
+  const cleanTitle = cleanWindowTitleClient(rawTitle);
+  const prevWindow = currentActiveWindow;
+  currentActiveWindow = cleanTitle;
+  currentActiveTargetId = targetId;
+  if (targets && Array.isArray(targets)) {
+    availableWindowTargets = targets;
+  }
+
+  if (windowBadgeTitle) {
+    windowBadgeTitle.textContent = cleanTitle;
+    windowBadgeTitle.title = `Active Window: ${cleanTitle}`;
+  }
+
+  if (!isTabsInitialized || prevWindow !== cleanTitle) {
+    isTabsInitialized = true;
+    initOrRefreshTabsForWindow(cleanTitle);
+  }
+}
+
+async function initOrRefreshTabsForWindow(windowKey) {
+  const tabsMap = getStoredTabs();
+  let tabs = tabsMap[windowKey] || [];
+
+  if (tabs.length === 0) {
+    // Smart pre-fill: active conversation + up to 2 most recent conversations
+    try {
+      const response = await fetchWithAuth('/chat-history');
+      const payload = await response.json();
+      const allChats = payload.chats || payload.history || [];
+      
+      // Filter chats for this window
+      const normWindow = windowKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+      let matchingChats = allChats.filter(c => {
+        const normWs = (c.workspace || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return normWs && (normWs.includes(normWindow) || normWindow.includes(normWs));
+      });
+      if (matchingChats.length === 0) {
+        matchingChats = allChats;
+      }
+
+      // Find active chat or first chat
+      const activeChat = matchingChats.find(c => c.active) || matchingChats[0];
+      const otherChats = matchingChats.filter(c => c !== activeChat).slice(0, 2);
+
+      const candidateTabs = [];
+      if (activeChat) candidateTabs.push(activeChat);
+      candidateTabs.push(...otherChats);
+
+      tabs = candidateTabs.map(c => ({
+        chatId: getCleanChatId(c.chatId || c.id),
+        title: c.title || 'Conversation',
+        workspace: c.workspace || ''
+      })).filter(t => t.chatId);
+
+      if (tabs.length > 0) {
+        tabsMap[windowKey] = tabs;
+        saveStoredTabs(tabsMap);
+      }
+
+      if (activeChat) {
+        currentActiveChatId = getCleanChatId(activeChat.chatId || activeChat.id);
+        markChatAsRead(currentActiveChatId);
+      }
+    } catch (_) {}
+  }
+
+  renderConversationTabs();
+  pollConversationsStatus();
+}
+
+function renderConversationTabs() {
+  if (!conversationTabs || !currentActiveWindow) return;
+  const tabsMap = getStoredTabs();
+  const tabs = tabsMap[currentActiveWindow] || [];
+  const unreadMap = getStoredUnread();
+
+  conversationTabs.innerHTML = '';
+
+  tabs.forEach(tab => {
+    const cleanId = getCleanChatId(tab.chatId);
+    const isActive = cleanId && cleanId === currentActiveChatId;
+    if (isActive) {
+      // Ensure active tab unread is always 0
+      if (unreadMap[cleanId] && unreadMap[cleanId].unreadCount !== 0) {
+        unreadMap[cleanId].unreadCount = 0;
+        saveStoredUnread(unreadMap);
+      }
+    }
+    const unreadCount = isActive ? 0 : (unreadMap[cleanId]?.unreadCount || 0);
+
+    const tabBtn = document.createElement('button');
+    tabBtn.className = `conversation-tab${isActive ? ' active' : ''}`;
+    tabBtn.type = 'button';
+    tabBtn.setAttribute('data-chat-id', cleanId);
+    tabBtn.title = tab.title;
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'tab-title';
+    titleSpan.textContent = tab.title;
+    tabBtn.appendChild(titleSpan);
+
+    const badge = document.createElement('span');
+    badge.className = 'tab-unread-badge';
+    badge.setAttribute('data-count', String(unreadCount));
+    badge.textContent = unreadCount > 99 ? '99+' : (unreadCount > 0 ? String(unreadCount) : '');
+    tabBtn.appendChild(badge);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-close-btn';
+    closeBtn.type = 'button';
+    closeBtn.title = 'Close tab';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeConversationTab(cleanId);
+    });
+    tabBtn.appendChild(closeBtn);
+
+    tabBtn.addEventListener('click', () => {
+      if (isActive) return;
+      markChatAsRead(cleanId);
+      currentActiveChatId = cleanId;
+      renderConversationTabs();
+      selectChat(tab.title, cleanId, tab.workspace);
+    });
+
+    conversationTabs.appendChild(tabBtn);
+  });
+}
+
+function closeConversationTab(chatId) {
+  if (!currentActiveWindow) return;
+  const tabsMap = getStoredTabs();
+  let tabs = tabsMap[currentActiveWindow] || [];
+  const tabIndex = tabs.findIndex(t => getCleanChatId(t.chatId) === chatId);
+  if (tabIndex === -1) return;
+
+  const wasActive = getCleanChatId(tabs[tabIndex].chatId) === currentActiveChatId;
+  tabs.splice(tabIndex, 1);
+  tabsMap[currentActiveWindow] = tabs;
+  saveStoredTabs(tabsMap);
+
+  if (wasActive && tabs.length > 0) {
+    const nextTab = tabs[Math.min(tabIndex, tabs.length - 1)];
+    const nextCleanId = getCleanChatId(nextTab.chatId);
+    currentActiveChatId = nextCleanId;
+    markChatAsRead(nextCleanId);
+    renderConversationTabs();
+    selectChat(nextTab.title, nextCleanId, nextTab.workspace);
+  } else {
+    renderConversationTabs();
+  }
+}
+
+function handleChatSelected(title, chatId, workspace, switchedTarget) {
+  const cleanId = getCleanChatId(chatId);
+  if (!cleanId) return;
+
+  if (switchedTarget) {
+    currentActiveWindow = cleanWindowTitleClient(switchedTarget);
+    if (windowBadgeTitle) windowBadgeTitle.textContent = currentActiveWindow;
+  }
+
+  currentActiveChatId = cleanId;
+  markChatAsRead(cleanId);
+
+  if (currentActiveWindow) {
+    const tabsMap = getStoredTabs();
+    let tabs = tabsMap[currentActiveWindow] || [];
+    let existing = tabs.find(t => getCleanChatId(t.chatId) === cleanId);
+    if (!existing) {
+      tabs.push({
+        chatId: cleanId,
+        title: title || 'Conversation',
+        workspace: workspace || ''
+      });
+      tabsMap[currentActiveWindow] = tabs;
+      saveStoredTabs(tabsMap);
+    }
+    renderConversationTabs();
+  }
+}
+
+async function refreshTabsAfterNewChat() {
+  try {
+    const response = await fetchWithAuth('/chat-history');
+    const payload = await response.json();
+    const chats = payload.chats || payload.history || [];
+    const activeChat = chats.find(c => c.active);
+    if (activeChat) {
+      handleChatSelected(activeChat.title, activeChat.chatId || activeChat.id, activeChat.workspace);
+    }
+  } catch (_) {}
+}
+
+async function pollConversationsStatus() {
+  if (!currentActiveWindow) return;
+  const tabsMap = getStoredTabs();
+  const tabs = tabsMap[currentActiveWindow] || [];
+  const ids = tabs.map(t => getCleanChatId(t.chatId)).filter(Boolean);
+  if (ids.length === 0) return;
+
+  try {
+    const res = await fetchWithAuth(`/api/conversations/status?ids=${encodeURIComponent(ids.join(','))}`);
+    const data = await res.json();
+    if (!data.success || !data.statuses) return;
+
+    const unreadMap = getStoredUnread();
+    let changed = false;
+
+    for (const [id, stat] of Object.entries(data.statuses)) {
+      if (!stat) continue;
+      const cleanId = getCleanChatId(id);
+      const entry = unreadMap[cleanId] || { lastSeenStep: stat.stepIndex || 0, unreadCount: 0 };
+      const isActive = cleanId === currentActiveChatId;
+
+      if (isActive) {
+        if (typeof stat.stepIndex === 'number' && stat.stepIndex > (entry.lastSeenStep || 0)) {
+          entry.lastSeenStep = stat.stepIndex;
+        }
+        if (entry.unreadCount !== 0) {
+          entry.unreadCount = 0;
+          changed = true;
+        }
+      } else {
+        // Tab is inactive
+        if (typeof entry.lastSeenStep !== 'number' || entry.lastSeenStep === 0) {
+          // Establish initial baseline
+          entry.lastSeenStep = stat.stepIndex || 0;
+          entry.unreadCount = 0;
+          changed = true;
+        } else if (stat.stepIndex > entry.lastSeenStep) {
+          const diff = stat.stepIndex - entry.lastSeenStep;
+          if (entry.unreadCount !== diff) {
+            entry.unreadCount = diff;
+            changed = true;
+          }
+        }
+      }
+      unreadMap[cleanId] = entry;
+    }
+
+    if (changed) {
+      saveStoredUnread(unreadMap);
+      renderConversationTabs();
+    }
+  } catch (_) {}
+}
+
+function renderWindowDropdown() {
+  if (!windowDropdownList) return;
+  windowDropdownList.innerHTML = '';
+
+  if (availableWindowTargets.length === 0) {
+    windowDropdownList.innerHTML = '<div style="padding: 10px 14px; font-size: 0.78rem; color: var(--text-soft);">No IDE windows found</div>';
+    return;
+  }
+
+  availableWindowTargets.forEach(t => {
+    const clean = cleanWindowTitleClient(t.title || t.cleanTitle);
+    const isActive = t.id === currentActiveTargetId || (clean === currentActiveWindow);
+
+    const item = document.createElement('div');
+    item.className = `window-dropdown-item${isActive ? ' active' : ''}`;
+
+    const left = document.createElement('div');
+    left.className = 'window-item-left';
+    left.innerHTML = `<span>🪟</span><span>${clean}</span>`;
+    item.appendChild(left);
+
+    const port = document.createElement('span');
+    port.className = 'window-item-port';
+    port.textContent = isActive ? '● Active' : (t.port ? `:${t.port}` : '');
+    item.appendChild(port);
+
+    item.addEventListener('click', async () => {
+      closeWindowDropdown();
+      if (isActive) return;
+      showSlideInNotification(`Switching to window "${clean}"...`, 'info');
+      try {
+        const switchRes = await fetchWithAuth('/select-target', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetId: t.id }),
+        });
+        const switchPayload = await switchRes.json();
+        if (!switchPayload.success) {
+          throw new Error(switchPayload.error || 'Window switch failed');
+        }
+        showSlideInNotification(`Switched to "${clean}"`, 'success');
+        currentActiveWindow = clean;
+        currentActiveTargetId = t.id;
+        if (windowBadgeTitle) windowBadgeTitle.textContent = clean;
+        initOrRefreshTabsForWindow(clean);
+        setTimeout(loadSnapshot, 300);
+        setTimeout(fetchAppState, 600);
+      } catch (err) {
+        showSlideInNotification(err.message, 'error');
+      }
+    });
+
+    windowDropdownList.appendChild(item);
+  });
+}
+
+function toggleWindowDropdown() {
+  if (!windowTargetDropdown) return;
+  const isHidden = windowTargetDropdown.hidden;
+  if (isHidden) {
+    renderWindowDropdown();
+    windowTargetDropdown.hidden = false;
+    windowTargetAnchor?.classList.add('open');
+    if (conversationPickerDropdown) conversationPickerDropdown.hidden = true;
+  } else {
+    closeWindowDropdown();
+  }
+}
+
+function closeWindowDropdown() {
+  if (windowTargetDropdown) windowTargetDropdown.hidden = true;
+  windowTargetAnchor?.classList.remove('open');
+}
+
+async function showConversationPicker() {
+  if (!conversationPickerDropdown || !conversationPickerList) return;
+  closeWindowDropdown();
+  conversationPickerDropdown.hidden = false;
+  conversationPickerList.innerHTML = `
+    <div class="loading-state" style="padding: 14px;">
+      <div class="loading-spinner"></div>
+      <p style="font-size: 0.75rem;">Loading conversations...</p>
+    </div>
+  `;
+
+  try {
+    const response = await fetchWithAuth('/chat-history');
+    const payload = await response.json();
+    const allChats = payload.chats || payload.history || [];
+
+    const normWindow = (currentActiveWindow || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    let chats = allChats.filter(c => {
+      const normWs = (c.workspace || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return normWs && (normWs.includes(normWindow) || normWindow.includes(normWs));
+    });
+    if (chats.length === 0) chats = allChats;
+
+    const tabsMap = getStoredTabs();
+    const currentTabs = tabsMap[currentActiveWindow] || [];
+    const openIds = new Set(currentTabs.map(t => getCleanChatId(t.chatId)));
+
+    conversationPickerList.innerHTML = '';
+
+    // "+ New Conversation" item
+    const newChatOption = document.createElement('div');
+    newChatOption.className = 'conversation-picker-item';
+    newChatOption.style.borderBottom = '1px solid var(--border-color)';
+    newChatOption.style.fontWeight = '600';
+    newChatOption.style.color = 'var(--primary)';
+    newChatOption.innerHTML = '<span>➕ Start New Conversation</span>';
+    newChatOption.addEventListener('click', async () => {
+      conversationPickerDropdown.hidden = true;
+      await startNewChat();
+    });
+    conversationPickerList.appendChild(newChatOption);
+
+    if (chats.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.style.padding = '12px';
+      emptyDiv.style.fontSize = '0.78rem';
+      emptyDiv.style.color = 'var(--text-soft)';
+      emptyDiv.textContent = 'No other conversations found.';
+      conversationPickerList.appendChild(emptyDiv);
+      return;
+    }
+
+    chats.forEach(chat => {
+      const cleanId = getCleanChatId(chat.chatId || chat.id);
+      const isOpen = openIds.has(cleanId);
+
+      const item = document.createElement('div');
+      item.className = `conversation-picker-item${isOpen ? ' already-open' : ''}`;
+
+      const titleDiv = document.createElement('div');
+      titleDiv.textContent = chat.title;
+      item.appendChild(titleDiv);
+
+      const subDiv = document.createElement('div');
+      subDiv.className = 'conversation-picker-item-sub';
+      subDiv.innerHTML = `
+        ${chat.date ? `<span>${chat.date}</span>` : ''}
+        ${isOpen ? '<span style="color: var(--primary);">● In tabs</span>' : ''}
+      `;
+      item.appendChild(subDiv);
+
+      item.addEventListener('click', () => {
+        conversationPickerDropdown.hidden = true;
+        if (!isOpen) {
+          const currentTabsMap = getStoredTabs();
+          const tabList = currentTabsMap[currentActiveWindow] || [];
+          tabList.push({
+            chatId: cleanId,
+            title: chat.title || 'Conversation',
+            workspace: chat.workspace || ''
+          });
+          currentTabsMap[currentActiveWindow] = tabList;
+          saveStoredTabs(currentTabsMap);
+        }
+        currentActiveChatId = cleanId;
+        markChatAsRead(cleanId);
+        renderConversationTabs();
+        selectChat(chat.title, cleanId, chat.workspace);
+      });
+
+      conversationPickerList.appendChild(item);
+    });
+  } catch (err) {
+    conversationPickerList.innerHTML = `<div style="padding: 12px; font-size: 0.78rem; color: #ef4444;">${err.message}</div>`;
+  }
+}
+
+function setupWindowAndConversationTabs() {
+  if (windowTargetBadge) {
+    windowTargetBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleWindowDropdown();
+    });
+  }
+
+  if (conversationTabAddBtn) {
+    conversationTabAddBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showConversationPicker();
+    });
+  }
+
+  if (conversationPickerCloseBtn) {
+    conversationPickerCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (conversationPickerDropdown) conversationPickerDropdown.hidden = true;
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (windowTargetDropdown && !windowTargetDropdown.hidden) {
+      if (!windowTargetDropdown.contains(e.target) && !windowTargetBadge?.contains(e.target)) {
+        closeWindowDropdown();
+      }
+    }
+    if (conversationPickerDropdown && !conversationPickerDropdown.hidden) {
+      if (!conversationPickerDropdown.contains(e.target) && !conversationTabAddBtn?.contains(e.target)) {
+        conversationPickerDropdown.hidden = true;
+      }
+    }
+  });
+
+  // Background interval for unread counts
+  setInterval(pollConversationsStatus, 8000);
+}
+
 applyTheme(state.currentTheme, false);
 updateSuggestionLabel();
 updateSessionStatsLabel();
@@ -4157,6 +4711,7 @@ setupPlanPreviewModal();
 updateHeaderPlanButton();
 setupWalkthroughPreviewModal();
 updateHeaderWalkthroughButton();
+setupWindowAndConversationTabs();
 connectWebSocket();
 fetchAppState();
 loadQuickCommands();

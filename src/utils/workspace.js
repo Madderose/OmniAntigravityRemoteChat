@@ -968,3 +968,67 @@ export async function findLatestWalkthrough() {
     return null;
 }
 
+/**
+ * Cleans and extracts the concise project/window title from an Antigravity target title.
+ *
+ * @param {string} [title]
+ * @returns {string}
+ */
+export function cleanWindowTitle(title) {
+    if (!title || typeof title !== 'string') return 'Antigravity IDE';
+    if (title.includes(' - Antigravity IDE')) {
+        const clean = title.split(' - Antigravity IDE')[0].trim();
+        if (clean) return clean;
+    }
+    const clean = title.split(' - ')[0].trim();
+    return clean || 'Antigravity IDE';
+}
+
+/**
+ * Retrieves the latest step index and activity status for a given conversation ID.
+ *
+ * @param {string} chatId
+ * @returns {Promise<{chatId: string, stepIndex: number, type: string, source: string, updatedAt: number} | null>}
+ */
+export async function getConversationStatus(chatId) {
+    if (!chatId || typeof chatId !== 'string') return null;
+    const cleanId = chatId.replace(/^fastpick-item-/, '').trim();
+    const brainRoots = [
+        join(os.homedir(), '.gemini', 'antigravity-ide', 'brain'),
+        join(os.homedir(), '.gemini', 'antigravity', 'brain')
+    ];
+
+    for (const root of brainRoots) {
+        const transcriptPath = join(root, cleanId, '.system_generated', 'logs', 'transcript.jsonl');
+        try {
+            const stat = await fsp.stat(transcriptPath);
+            if (stat.size === 0) {
+                return { chatId: cleanId, stepIndex: 0, type: 'EMPTY', source: 'SYSTEM', updatedAt: stat.mtimeMs };
+            }
+            const fd = await fsp.open(transcriptPath, 'r');
+            const bufSize = Math.min(4096, stat.size);
+            const buffer = Buffer.alloc(bufSize);
+            await fd.read(buffer, 0, bufSize, stat.size - bufSize);
+            await fd.close();
+            const lines = buffer.toString('utf-8').trim().split('\n');
+            const lastLine = lines[lines.length - 1];
+            if (lastLine) {
+                try {
+                    const parsed = JSON.parse(lastLine);
+                    return {
+                        chatId: cleanId,
+                        stepIndex: parsed.step_index || 0,
+                        type: parsed.type || 'UNKNOWN',
+                        source: parsed.source || 'UNKNOWN',
+                        updatedAt: stat.mtimeMs
+                    };
+                } catch (_) {
+                    return { chatId: cleanId, stepIndex: lines.length, type: 'RAW', source: 'UNKNOWN', updatedAt: stat.mtimeMs };
+                }
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
+
