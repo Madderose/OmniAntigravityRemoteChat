@@ -1092,8 +1092,9 @@ async function openWalkthroughPreviewModal(wtPath) {
     if (data.success && Array.isArray(data.walkthroughs) && historySelect) {
       historySelect.innerHTML = data.walkthroughs.map(w => {
         const ws = w.workspaceName ? `[${w.workspaceName}] ` : '';
+        const icon = w.isWalkthrough === false ? '📄 ' : '📜 ';
         const dateStr = w.updatedAt ? new Date(w.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        return `<option value="${escapeHtml(w.path)}" data-id="${escapeHtml(w.id)}">${escapeHtml(ws + w.title)} (${dateStr})</option>`;
+        return `<option value="${escapeHtml(w.path)}" data-id="${escapeHtml(w.id)}">${icon}${escapeHtml(ws + w.title)} (${dateStr})</option>`;
       }).join('');
       if (currentWalkthroughData?.path) {
         historySelect.value = currentWalkthroughData.path;
@@ -1161,6 +1162,31 @@ function closeWalkthroughPreviewModal() {
 }
 
 /**
+ * Toggles and updates the persistent header walkthrough shortcut button.
+ * @param {boolean} [forceState]
+ */
+function updateHeaderWalkthroughButton(forceState) {
+  const btn = document.getElementById('headerWalkthroughBtn');
+  const overflowWtStatus = document.getElementById('overflowWalkthroughStatusText');
+  const isWtActive = typeof forceState === 'boolean'
+    ? forceState
+    : (activeActionData && activeActionData.type === 'walkthrough');
+
+  if (btn) {
+    btn.classList.remove('hidden');
+    btn.classList.toggle('pending', !!isWtActive);
+    btn.title = isWtActive
+      ? 'Walkthrough Available (Tap to inspect)'
+      : 'Walkthrough & Artifacts (Archive)';
+    btn.setAttribute('aria-label', btn.title);
+  }
+
+  if (overflowWtStatus) {
+    overflowWtStatus.textContent = isWtActive ? 'Available now' : 'View & archive';
+  }
+}
+
+/**
  * Sets up global event listeners for the walkthrough preview modal.
  */
 function setupWalkthroughPreviewModal() {
@@ -1168,6 +1194,16 @@ function setupWalkthroughPreviewModal() {
   const closeBtn = document.getElementById('walkthroughCloseBtn');
   const closeFooterBtn = document.getElementById('walkthroughCloseFooterBtn');
   const historySelect = document.getElementById('walkthroughHistorySelect');
+  const headerWalkthroughBtn = document.getElementById('headerWalkthroughBtn');
+  const overflowWalkthroughBtn = document.getElementById('overflowWalkthroughBtn');
+
+  headerWalkthroughBtn?.addEventListener('click', () => {
+    openWalkthroughPreviewModal();
+  });
+
+  overflowWalkthroughBtn?.addEventListener('click', () => {
+    openWalkthroughPreviewModal();
+  });
 
   closeBtn?.addEventListener('click', closeWalkthroughPreviewModal);
   closeFooterBtn?.addEventListener('click', closeWalkthroughPreviewModal);
@@ -1192,35 +1228,85 @@ function enrichChatArtifactLinks() {
   const chatContent = document.getElementById('chatContent');
   if (!chatContent) return;
 
-  chatContent.querySelectorAll('a, [role="button"], code, span').forEach((el) => {
+  chatContent.querySelectorAll('a, [role="button"], code, span, button').forEach((el) => {
+    if (el.hasAttribute('data-omni-wt-bound') || el.hasAttribute('data-omni-plan-bound')) return;
+
     const href = el.getAttribute('href') || el.getAttribute('data-href') || el.getAttribute('data-url') || '';
     const text = (el.textContent || '').trim();
 
-    if (href.includes('walkthrough.md') || text === 'walkthrough.md' || text === 'Walkthrough' || (text.includes('walkthrough.md') && el.tagName !== 'A' && !el.querySelector('a'))) {
-      if (!el.hasAttribute('data-omni-wt-bound')) {
-        el.setAttribute('data-omni-wt-bound', 'true');
-        el.classList.add('walkthrough-preview-chip');
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const cleanPath = href.replace(/^file:\/\//, '') || '';
-          openWalkthroughPreviewModal(cleanPath);
-        });
+    // Check walkthrough link / chip
+    const isWalkthrough =
+      href.toLowerCase().includes('walkthrough') ||
+      /\bwalkthrough(\.md)?\b/i.test(text) ||
+      (el.tagName === 'A' && /walkthrough/i.test(text));
+
+    if (isWalkthrough) {
+      el.setAttribute('data-omni-wt-bound', 'true');
+      el.classList.add('walkthrough-preview-chip');
+      el.style.cursor = 'pointer';
+      const cleanPath = href.replace(/^file:\/\//, '').trim();
+      if (cleanPath) el.setAttribute('data-wt-path', cleanPath);
+      if (el.tagName === 'A') {
+        el.removeAttribute('href');
       }
-    } else if (href.includes('implementation_plan.md') || text === 'implementation_plan.md' || (text.includes('implementation_plan.md') && el.tagName !== 'A' && !el.querySelector('a'))) {
-      if (!el.hasAttribute('data-omni-plan-bound')) {
-        el.setAttribute('data-omni-plan-bound', 'true');
-        el.classList.add('plan-preview-chip');
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const cleanPath = href.replace(/^file:\/\//, '') || '';
-          openPlanPreviewModal(cleanPath);
-        });
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const path = el.getAttribute('data-wt-path') || cleanPath;
+        openWalkthroughPreviewModal(path || undefined);
+      });
+      return;
+    }
+
+    // Check implementation plan link / chip
+    const isPlan =
+      href.toLowerCase().includes('implementation_plan.md') ||
+      /\bimplementation_plan(\.md)?\b/i.test(text) ||
+      (el.tagName === 'A' && /implementation[ _]plan/i.test(text));
+
+    if (isPlan) {
+      el.setAttribute('data-omni-plan-bound', 'true');
+      el.classList.add('plan-preview-chip');
+      el.style.cursor = 'pointer';
+      const cleanPath = href.replace(/^file:\/\//, '').trim();
+      if (cleanPath) el.setAttribute('data-plan-path', cleanPath);
+      if (el.tagName === 'A') {
+        el.removeAttribute('href');
       }
-    } else if (
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const path = el.getAttribute('data-plan-path') || cleanPath;
+        openPlanPreviewModal(path || undefined);
+      });
+      return;
+    }
+
+    // Check other brain markdown artifacts (e.g. analysis_results.md)
+    const isBrainArtifact =
+      (href.includes('/brain/') && href.endsWith('.md')) ||
+      (el.tagName === 'A' && href.endsWith('.md') && !href.includes('implementation_plan.md'));
+
+    if (isBrainArtifact) {
+      el.setAttribute('data-omni-wt-bound', 'true');
+      el.classList.add('walkthrough-preview-chip');
+      el.style.cursor = 'pointer';
+      const cleanPath = href.replace(/^file:\/\//, '').trim();
+      if (cleanPath) el.setAttribute('data-wt-path', cleanPath);
+      if (el.tagName === 'A') {
+        el.removeAttribute('href');
+      }
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const path = el.getAttribute('data-wt-path') || cleanPath;
+        openWalkthroughPreviewModal(path || undefined);
+      });
+      return;
+    }
+
+    // Check audio voice memos
+    if (
       (href && (href.includes('voice-memo') || /\.(webm|wav|ogg|mp3)(\?|$)/i.test(href))) ||
       (el.tagName === 'A' && text.toLowerCase().includes('voice memo'))
     ) {
@@ -1242,12 +1328,25 @@ function enrichChatArtifactLinks() {
         el.parentNode.insertBefore(widget, el);
         el.style.display = 'none';
       }
+      return;
     }
   });
 
-  // Also convert raw markdown [Voice memo: ...](...) in text content
-  const rawMemoRegex = /\[Voice memo:\s*([^\]]+)\]\(([^)]+)\)/g;
+  // Also convert raw markdown [Walkthrough...](...) in text content
+  const rawWtRegex = /\[([^\]]*walkthrough[^\]]*)\]\(([^)]+)\)/gi;
   chatContent.querySelectorAll('p, div, span').forEach((el) => {
+    if (el.children.length > 0 && Array.from(el.children).some(c => c.tagName === 'P' || c.tagName === 'DIV')) return;
+    if (!el.textContent || !el.textContent.toLowerCase().includes('walkthrough')) return;
+    if (el.hasAttribute('data-omni-raw-wt-bound')) return;
+
+    if (rawWtRegex.test(el.innerHTML)) {
+      el.setAttribute('data-omni-raw-wt-bound', 'true');
+      el.innerHTML = el.innerHTML.replace(rawWtRegex, (_match, title, path) => {
+        const cleanPath = path.replace(/^file:\/\//, '').trim();
+        return `<button type="button" class="walkthrough-preview-chip" data-wt-path="${escapeHtml(cleanPath)}" title="Open Walkthrough">📜 ${escapeHtml(title)}</button>`;
+      });
+    }
+  });
     if (el.querySelector('.chat-voice-memo-widget')) return;
     if (el.children.length > 0 && Array.from(el.children).some(c => c.tagName === 'P' || c.tagName === 'DIV')) return;
     if (!el.textContent || !el.textContent.includes('[Voice memo:')) return;
@@ -1304,6 +1403,7 @@ function renderActionCard(actionData) {
       activeActionData = null;
     }
     updateHeaderPlanButton();
+    updateHeaderWalkthroughButton();
     return;
   }
 
@@ -1314,6 +1414,7 @@ function renderActionCard(actionData) {
       activeActionData = null;
     }
     updateHeaderPlanButton();
+    updateHeaderWalkthroughButton();
     return;
   }
 
@@ -1322,6 +1423,8 @@ function renderActionCard(actionData) {
     activeActionData = actionData;
     if (actionData.type === 'plan') {
       updateHeaderPlanButton(true);
+    } else if (actionData.type === 'walkthrough') {
+      updateHeaderWalkthroughButton(true);
     }
     if (!document.getElementById('planSnoozeResumeBtn')) {
       slot.innerHTML = `
@@ -1346,6 +1449,8 @@ function renderActionCard(actionData) {
   activeActionData = actionData;
   if (actionData.type === 'plan') {
     updateHeaderPlanButton(true);
+  } else if (actionData.type === 'walkthrough') {
+    updateHeaderWalkthroughButton(true);
   }
 
   // Sensory haptic feedback on mobile
@@ -3845,6 +3950,38 @@ let optionSnapshotDebounce2 = null;
 chatContainer.addEventListener('click', async (event) => {
   if (event.target.closest('.mobile-copy-btn')) return;
 
+  // Intercept click on walkthrough or artifact links / chips in conversation
+  const wtTarget = event.target.closest(
+    '.walkthrough-preview-chip, [data-omni-wt-bound], [data-wt-path], a[href*="walkthrough"], button[data-wt-path]'
+  ) || (event.target.closest('a, button, code') && /walkthrough/i.test(event.target.closest('a, button, code')?.textContent || ''));
+
+  if (wtTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rawPath = wtTarget.getAttribute('data-wt-path') ||
+                    wtTarget.getAttribute('href') ||
+                    wtTarget.getAttribute('data-href') || '';
+    const cleanPath = rawPath.replace(/^file:\/\//, '').trim();
+    openWalkthroughPreviewModal(cleanPath || undefined);
+    return;
+  }
+
+  // Intercept click on implementation plan links / chips in conversation
+  const planTarget = event.target.closest(
+    '.plan-preview-chip, [data-omni-plan-bound], [data-plan-path], a[href*="implementation_plan"], button[data-plan-path]'
+  ) || (event.target.closest('a, button, code') && /implementation[ _]plan/i.test(event.target.closest('a, button, code')?.textContent || ''));
+
+  if (planTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rawPath = planTarget.getAttribute('data-plan-path') ||
+                    planTarget.getAttribute('href') ||
+                    planTarget.getAttribute('data-href') || '';
+    const cleanPath = rawPath.replace(/^file:\/\//, '').trim();
+    openPlanPreviewModal(cleanPath || undefined);
+    return;
+  }
+
   // Ignore synthetic click on input if it bubbled from an option label click
   if (event.target.tagName === 'INPUT' && event.target.closest('label[for^="ask-opt-"]')) {
     return;
@@ -4015,6 +4152,7 @@ setupTouchGestures();
 setupPlanPreviewModal();
 updateHeaderPlanButton();
 setupWalkthroughPreviewModal();
+updateHeaderWalkthroughButton();
 connectWebSocket();
 fetchAppState();
 loadQuickCommands();

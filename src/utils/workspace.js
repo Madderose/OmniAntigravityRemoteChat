@@ -865,10 +865,29 @@ export async function findRecentWalkthroughs(limit = 10) {
             const dirs = await fsp.readdir(root, { withFileTypes: true });
             for (const d of dirs) {
                 if (d.isDirectory()) {
-                    const wtFile = join(root, d.name, 'walkthrough.md');
+                    const convDir = join(root, d.name);
                     try {
-                        const stat = await fsp.stat(wtFile);
-                        candidates.push({ path: wtFile, mtime: stat.mtimeMs, convId: d.name });
+                        const entries = await fsp.readdir(convDir, { withFileTypes: true });
+                        for (const entry of entries) {
+                            if (
+                                entry.isFile() &&
+                                entry.name.endsWith('.md') &&
+                                !entry.name.endsWith('.metadata.json') &&
+                                entry.name !== 'implementation_plan.md'
+                            ) {
+                                const fullPath = join(convDir, entry.name);
+                                try {
+                                    const stat = await fsp.stat(fullPath);
+                                    candidates.push({
+                                        path: fullPath,
+                                        mtime: stat.mtimeMs,
+                                        convId: d.name,
+                                        filename: entry.name,
+                                        isWalkthrough: entry.name === 'walkthrough.md'
+                                    });
+                                } catch (_) {}
+                            }
+                        }
                     } catch (_) {}
                 }
             }
@@ -879,13 +898,27 @@ export async function findRecentWalkthroughs(limit = 10) {
     const workspaceWt = join(WORKSPACE_ROOT, 'walkthrough.md');
     try {
         const stat = await fsp.stat(workspaceWt);
-        candidates.push({ path: workspaceWt, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
+        candidates.push({ path: workspaceWt, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT), filename: 'walkthrough.md', isWalkthrough: true });
     } catch (_) {}
 
-    const docsWt = join(WORKSPACE_ROOT, 'docs', 'walkthrough.md');
+    const docsDir = join(WORKSPACE_ROOT, 'docs');
     try {
-        const stat = await fsp.stat(docsWt);
-        candidates.push({ path: docsWt, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
+        const docsEntries = await fsp.readdir(docsDir, { withFileTypes: true });
+        for (const entry of docsEntries) {
+            if (entry.isFile() && entry.name.endsWith('.md') && entry.name !== 'implementation_plan.md') {
+                const docPath = join(docsDir, entry.name);
+                try {
+                    const stat = await fsp.stat(docPath);
+                    candidates.push({
+                        path: docPath,
+                        mtime: stat.mtimeMs,
+                        workspace: basename(WORKSPACE_ROOT),
+                        filename: entry.name,
+                        isWalkthrough: entry.name === 'walkthrough.md'
+                    });
+                } catch (_) {}
+            }
+        }
     } catch (_) {}
 
     candidates.sort((a, b) => b.mtime - a.mtime);
@@ -895,7 +928,8 @@ export async function findRecentWalkthroughs(limit = 10) {
     for (const item of topCandidates) {
         try {
             const content = await fsp.readFile(item.path, 'utf-8');
-            const title = extractMarkdownTitle(content, 'Walkthrough');
+            const defaultTitle = item.isWalkthrough ? 'Walkthrough' : item.filename.replace(/\.md$/, '').replace(/[-_]/g, ' ');
+            const title = extractMarkdownTitle(content, defaultTitle);
             const workspaceName = item.workspace || deriveWorkspaceNameFromPath(item.path, content);
             const id = 'wt-' + Math.floor(item.mtime / 1000).toString(36) + '-' + hashString(content.slice(0, 100));
             results.push({
@@ -903,7 +937,8 @@ export async function findRecentWalkthroughs(limit = 10) {
                 path: item.path,
                 title,
                 workspaceName,
-                updatedAt: item.mtime
+                updatedAt: item.mtime,
+                isWalkthrough: item.isWalkthrough
             });
         } catch (_) {}
     }
@@ -916,9 +951,9 @@ export async function findRecentWalkthroughs(limit = 10) {
  * @returns {Promise<{path: string, content: string, updatedAt: number, title?: string, workspaceName?: string, id?: string} | null>}
  */
 export async function findLatestWalkthrough() {
-    const wts = await findRecentWalkthroughs(1);
-    if (wts.length > 0) {
-        const top = wts[0];
+    const list = await findRecentWalkthroughs(15);
+    const top = list.find(item => item.isWalkthrough || item.path.endsWith('walkthrough.md')) || list[0];
+    if (top) {
         const content = await fsp.readFile(top.path, 'utf-8');
         return {
             path: top.path,
@@ -926,7 +961,8 @@ export async function findLatestWalkthrough() {
             updatedAt: top.updatedAt,
             title: top.title,
             workspaceName: top.workspaceName,
-            id: top.id
+            id: top.id,
+            isWalkthrough: top.isWalkthrough
         };
     }
     return null;

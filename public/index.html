@@ -21,7 +21,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/css/style.css?v=1.5.3" />
+    <link rel="stylesheet" href="/css/style.css?v=1.5.4" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
@@ -45,6 +45,9 @@
           </div>
         </div>
         <div class="header-controls">
+          <button class="header-plan-btn" id="headerWalkthroughBtn" aria-label="Walkthrough & Artifacts" title="Walkthrough & Artifacts">
+            <span class="plan-pill-icon">📜</span>
+          </button>
           <button class="header-plan-btn" id="headerPlanBtn" aria-label="Implementation Plan" title="Implementation Plan">
             <span class="plan-pill-icon">📋</span>
           </button>
@@ -75,6 +78,13 @@
             </button>
             <div class="overflow-dropdown" id="headerOverflowDropdown" hidden>
               <div class="overflow-dropdown-group">
+                <button class="overflow-item" id="overflowWalkthroughBtn">
+                  <span class="overflow-item-icon">📜</span>
+                  <div class="overflow-item-text">
+                    <strong>Walkthrough &amp; Artifacts</strong>
+                    <small id="overflowWalkthroughStatusText">View &amp; archive</small>
+                  </div>
+                </button>
                 <button class="overflow-item" id="overflowPlanBtn">
                   <span class="overflow-item-icon">📋</span>
                   <div class="overflow-item-text">
@@ -368,15 +378,15 @@
           <div class="walkthrough-title-wrap">
             <span class="walkthrough-icon">📜</span>
             <div class="walkthrough-title-col">
-              <div class="walkthrough-title">Walkthrough &amp; Summary</div>
+              <div class="walkthrough-title">Walkthrough &amp; Artifacts</div>
               <div class="walkthrough-subtitle" id="walkthroughSubtitle">Loading walkthrough...</div>
             </div>
           </div>
           <button class="icon-btn" id="walkthroughCloseBtn" aria-label="Close preview">✕</button>
         </div>
         <div class="walkthrough-history-bar" id="walkthroughHistoryBar">
-          <label for="walkthroughHistorySelect" class="walkthrough-history-label">📂 Walkthrough History:</label>
-          <select id="walkthroughHistorySelect" class="walkthrough-history-select" aria-label="Select walkthrough from history"></select>
+          <label for="walkthroughHistorySelect" class="walkthrough-history-label">📂 Walkthroughs &amp; Artifacts:</label>
+          <select id="walkthroughHistorySelect" class="walkthrough-history-select" aria-label="Select walkthrough or artifact from history"></select>
         </div>
         <div class="walkthrough-body" id="walkthroughBody">
           <div class="walkthrough-loading">
@@ -445,6 +455,6 @@
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"
     ></script>
-    <script type="module" src="/js/app.js?v=1.5.3"></script>
+    <script type="module" src="/js/app.js?v=1.5.4"></script>
   </body>
 </html>

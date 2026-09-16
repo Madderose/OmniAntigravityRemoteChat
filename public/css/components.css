@@ -2438,6 +2438,13 @@ body.compact-mode .header-plan-btn {
   transition: all var(--transition-fast, 160ms ease);
 }
 
+button.walkthrough-preview-chip,
+button.plan-preview-chip {
+  font-family: inherit;
+  line-height: inherit;
+  outline: none;
+}
+
 .walkthrough-preview-chip:hover,
 .plan-preview-chip:hover {
   background: var(--accent);
