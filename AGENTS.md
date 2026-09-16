@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-**OmniAntigravity Remote Chat** (v1.5.0) is a premium mobile command center for Antigravity AI sessions.  
+**OmniAntigravity Remote Chat** (v1.6.0) is a premium mobile command center for Antigravity AI sessions.  
 Architecture: Node.js server connects to Antigravity via Chrome DevTools Protocol (CDP), mirrors the chat UI to a mobile browser via WebSocket, and adds remote workspace tools, supervisor intelligence, quota monitoring, and tunnel-based remote access.
 
 ## Tech Stack

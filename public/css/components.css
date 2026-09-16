@@ -2511,6 +2511,8 @@ button.plan-preview-chip {
   position: relative;
   z-index: 15;
   user-select: none;
+  flex-shrink: 0;
+  min-height: 38px;
 }
 
 .window-target-anchor {
@@ -2875,6 +2877,53 @@ body.compact-mode .conversation-tab {
   padding: 2px 6px 2px 8px;
   font-size: 0.7rem;
 }
+
+/* ─── Overflow Version Row ───────────────────────────────────────── */
+.overflow-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  user-select: none;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: var(--radius-sm, 6px);
+  margin: 2px 4px;
+}
+
+.overflow-version-row:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  color: var(--text-main);
+}
+
+.overflow-version-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overflow-version-icon {
+  font-size: 0.85rem;
+}
+
+.overflow-version-label {
+  font-weight: 500;
+}
+
+.overflow-version-tag {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 9999px);
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-color);
+  color: var(--primary, #3b82f6);
+  letter-spacing: 0.3px;
+}
+
 
 
 

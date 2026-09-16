@@ -107,4 +107,4 @@ export function getDevMocksEnabled() {
 
 // ─── Version ────────────────────────────────────────────────────────
 
-export const VERSION = '1.5.4';
+export const VERSION = '1.6.0';

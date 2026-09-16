@@ -97,6 +97,12 @@ const conversationTabAddBtn = document.getElementById('conversationTabAddBtn');
 const conversationPickerDropdown = document.getElementById('conversationPickerDropdown');
 const conversationPickerList = document.getElementById('conversationPickerList');
 const conversationPickerCloseBtn = document.getElementById('conversationPickerCloseBtn');
+const appVersionBadge = document.getElementById('appVersionBadge');
+const overflowVersionRow = document.getElementById('overflowVersionRow');
+const APP_VERSION = '1.6.0';
+if (appVersionBadge) {
+  appVersionBadge.textContent = `v${APP_VERSION}`;
+}
 
 const state = {
   ws: null,
@@ -2541,6 +2547,9 @@ async function fetchAppState() {
     if (payload.windowTitle) {
       handleWindowStateUpdate(payload.windowTitle, payload.activeTargetId, payload.targets);
     }
+    if (payload.version && appVersionBadge) {
+      appVersionBadge.textContent = `v${payload.version}`;
+    }
   } catch (_) {}
 }
 
@@ -3145,8 +3154,9 @@ async function launchNewWindow() {
 function handleCDPStatus(status, targetTitle) {
   if (status === 'connected') {
     updateStatus(true);
-    if (targetTitle && targetText) {
-      targetText.textContent = targetTitle;
+    if (targetTitle) {
+      if (targetText) targetText.textContent = targetTitle;
+      handleWindowStateUpdate(targetTitle);
     }
     loadSnapshot();
   } else if (status === 'reconnecting') {
@@ -4695,6 +4705,22 @@ function setupWindowAndConversationTabs() {
       }
     }
   });
+
+  if (overflowVersionRow) {
+    overflowVersionRow.addEventListener('click', () => {
+      showSlideInNotification(`OmniAntigravity Remote Chat v${APP_VERSION} (SemVer)`, 'info');
+    });
+  }
+
+  // Fast initial bootstrap of window targets and tabs without waiting for /app-state
+  fetchWithAuth('/cdp-targets')
+    .then(r => r.json())
+    .then(data => {
+      if (data && (data.windowTitle || data.activeTarget)) {
+        handleWindowStateUpdate(data.windowTitle, data.activeTarget, data.targets);
+      }
+    })
+    .catch(() => {});
 
   // Background interval for unread counts
   setInterval(pollConversationsStatus, 8000);

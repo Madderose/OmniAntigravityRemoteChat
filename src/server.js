@@ -5979,6 +5979,7 @@ export async function createServer() {
             return res.json({
                 mode: 'Unknown',
                 model: 'Unknown',
+                version: VERSION,
                 activeTargetId,
                 currentTargetTitle,
                 windowTitle,
@@ -5988,6 +5989,7 @@ export async function createServer() {
         const result = await getAppState(cdpConnection);
         res.json({
             ...result,
+            version: VERSION,
             activeTargetId,
             currentTargetTitle,
             windowTitle,
