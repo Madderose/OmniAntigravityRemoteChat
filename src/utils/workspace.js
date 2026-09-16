@@ -11,7 +11,8 @@ import fsp from 'fs/promises';
 import os from 'os';
 import { EventEmitter } from 'events';
 import { execFile, spawn } from 'child_process';
-import { dirname, extname, join, relative, resolve, sep } from 'path';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'path';
+import { hashString } from './hash.js';
 import { PROJECT_ROOT } from '../config.js';
 
 const WORKSPACE_ROOT = resolve(process.env.WORKSPACE_ROOT || PROJECT_ROOT);
@@ -724,12 +725,50 @@ export const workspaceRoot = WORKSPACE_ROOT;
 export const uploadsDir = UPLOADS_DIR;
 
 /**
- * Find the latest implementation plan markdown file.
- * Searches Antigravity brain directories and the workspace root.
- *
- * @returns {Promise<{path: string, content: string, updatedAt: number} | null>}
+ * Extract title from markdown content (first # heading)
+ * @param {string} content
+ * @param {string} fallback
+ * @returns {string}
  */
-export async function findLatestImplementationPlan() {
+export function extractMarkdownTitle(content, fallback = 'Document') {
+    if (!content) return fallback;
+    const match = content.match(/^#\s+(.+)$/m);
+    if (match && match[1]) {
+        return match[1].replace(/[\r\n]+/g, ' ').trim();
+    }
+    return fallback;
+}
+
+/**
+ * Derives a clean workspace or project name from a file path or title.
+ * @param {string} filePath
+ * @param {string} [content]
+ * @returns {string}
+ */
+export function deriveWorkspaceNameFromPath(filePath, content = '') {
+    if (!filePath) return 'Antigravity Workspace';
+    if (filePath.includes('/Projet_Cholet/')) return 'Projet_Cholet';
+    if (filePath.includes('/OmniAntigravityRemoteChat/')) return 'OmniAntigravityRemoteChat';
+    if (content) {
+        const titleMatch = content.match(/TICKET-([A-Z0-9]+)-/i);
+        if (titleMatch) return 'OmniAntigravity';
+    }
+    const parts = filePath.split('/');
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === 'brain' && i > 0 && parts[i+1]) {
+            return 'Conversation ' + parts[i+1].slice(0, 8);
+        }
+    }
+    return basename(WORKSPACE_ROOT);
+}
+
+/**
+ * Discovers the recent implementation plans across brain storage and workspace directories.
+ *
+ * @param {number} [limit=10]
+ * @returns {Promise<Array<{id: string, path: string, title: string, workspaceName: string, updatedAt: number}>>}
+ */
+export async function findRecentImplementationPlans(limit = 10) {
     const candidates = [];
     const brainRoots = [
         join(os.homedir(), '.gemini', 'antigravity-ide', 'brain'),
@@ -744,7 +783,7 @@ export async function findLatestImplementationPlan() {
                     const planFile = join(root, d.name, 'implementation_plan.md');
                     try {
                         const stat = await fsp.stat(planFile);
-                        candidates.push({ path: planFile, mtime: stat.mtimeMs });
+                        candidates.push({ path: planFile, mtime: stat.mtimeMs, convId: d.name });
                     } catch (_) {}
                 }
             }
@@ -755,24 +794,141 @@ export async function findLatestImplementationPlan() {
     const workspacePlan = join(WORKSPACE_ROOT, 'implementation_plan.md');
     try {
         const stat = await fsp.stat(workspacePlan);
-        candidates.push({ path: workspacePlan, mtime: stat.mtimeMs });
+        candidates.push({ path: workspacePlan, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
     } catch (_) {}
 
     const docsPlan = join(WORKSPACE_ROOT, 'docs', 'implementation_plan.md');
     try {
         const stat = await fsp.stat(docsPlan);
-        candidates.push({ path: docsPlan, mtime: stat.mtimeMs });
+        candidates.push({ path: docsPlan, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
     } catch (_) {}
 
     candidates.sort((a, b) => b.mtime - a.mtime);
-    if (candidates.length > 0) {
-        const top = candidates[0];
+    const topCandidates = candidates.slice(0, limit);
+
+    const results = [];
+    for (const item of topCandidates) {
+        try {
+            const content = await fsp.readFile(item.path, 'utf-8');
+            const title = extractMarkdownTitle(content, 'Implementation Plan');
+            const workspaceName = item.workspace || deriveWorkspaceNameFromPath(item.path, content);
+            const id = 'plan-' + Math.floor(item.mtime / 1000).toString(36) + '-' + hashString(content.slice(0, 100));
+            results.push({
+                id,
+                path: item.path,
+                title,
+                workspaceName,
+                updatedAt: item.mtime
+            });
+        } catch (_) {}
+    }
+    return results;
+}
+
+/**
+ * Finds the latest implementation plan.
+ *
+ * @returns {Promise<{path: string, content: string, updatedAt: number, title?: string, workspaceName?: string, id?: string} | null>}
+ */
+export async function findLatestImplementationPlan() {
+    const plans = await findRecentImplementationPlans(1);
+    if (plans.length > 0) {
+        const top = plans[0];
         const content = await fsp.readFile(top.path, 'utf-8');
         return {
             path: top.path,
             content,
-            updatedAt: top.mtime
+            updatedAt: top.updatedAt,
+            title: top.title,
+            workspaceName: top.workspaceName,
+            id: top.id
         };
     }
     return null;
 }
+
+/**
+ * Discovers the recent walkthroughs across brain storage and workspace directories.
+ *
+ * @param {number} [limit=10]
+ * @returns {Promise<Array<{id: string, path: string, title: string, workspaceName: string, updatedAt: number}>>}
+ */
+export async function findRecentWalkthroughs(limit = 10) {
+    const candidates = [];
+    const brainRoots = [
+        join(os.homedir(), '.gemini', 'antigravity-ide', 'brain'),
+        join(os.homedir(), '.gemini', 'antigravity', 'brain')
+    ];
+
+    for (const root of brainRoots) {
+        try {
+            const dirs = await fsp.readdir(root, { withFileTypes: true });
+            for (const d of dirs) {
+                if (d.isDirectory()) {
+                    const wtFile = join(root, d.name, 'walkthrough.md');
+                    try {
+                        const stat = await fsp.stat(wtFile);
+                        candidates.push({ path: wtFile, mtime: stat.mtimeMs, convId: d.name });
+                    } catch (_) {}
+                }
+            }
+        } catch (_) {}
+    }
+
+    // Also check workspace root and docs
+    const workspaceWt = join(WORKSPACE_ROOT, 'walkthrough.md');
+    try {
+        const stat = await fsp.stat(workspaceWt);
+        candidates.push({ path: workspaceWt, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
+    } catch (_) {}
+
+    const docsWt = join(WORKSPACE_ROOT, 'docs', 'walkthrough.md');
+    try {
+        const stat = await fsp.stat(docsWt);
+        candidates.push({ path: docsWt, mtime: stat.mtimeMs, workspace: basename(WORKSPACE_ROOT) });
+    } catch (_) {}
+
+    candidates.sort((a, b) => b.mtime - a.mtime);
+    const topCandidates = candidates.slice(0, limit);
+
+    const results = [];
+    for (const item of topCandidates) {
+        try {
+            const content = await fsp.readFile(item.path, 'utf-8');
+            const title = extractMarkdownTitle(content, 'Walkthrough');
+            const workspaceName = item.workspace || deriveWorkspaceNameFromPath(item.path, content);
+            const id = 'wt-' + Math.floor(item.mtime / 1000).toString(36) + '-' + hashString(content.slice(0, 100));
+            results.push({
+                id,
+                path: item.path,
+                title,
+                workspaceName,
+                updatedAt: item.mtime
+            });
+        } catch (_) {}
+    }
+    return results;
+}
+
+/**
+ * Finds the latest walkthrough.md file.
+ *
+ * @returns {Promise<{path: string, content: string, updatedAt: number, title?: string, workspaceName?: string, id?: string} | null>}
+ */
+export async function findLatestWalkthrough() {
+    const wts = await findRecentWalkthroughs(1);
+    if (wts.length > 0) {
+        const top = wts[0];
+        const content = await fsp.readFile(top.path, 'utf-8');
+        return {
+            path: top.path,
+            content,
+            updatedAt: top.updatedAt,
+            title: top.title,
+            workspaceName: top.workspaceName,
+            id: top.id
+        };
+    }
+    return null;
+}
+

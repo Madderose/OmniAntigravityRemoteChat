@@ -1767,29 +1767,35 @@ body.compact-mode .action-card-btn {
 }
 
 /* Plan Preview Overlay & Panel */
-.plan-preview-overlay {
+/* Plan & Walkthrough Preview Overlays & Panels (100% Opaque Solid Surfaces) */
+.plan-preview-overlay,
+.walkthrough-preview-overlay {
   z-index: 350;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--modal-backdrop, rgba(0, 0, 0, 0.75));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-.plan-preview-modal-panel {
+.plan-preview-modal-panel,
+.walkthrough-modal-panel {
   display: flex;
   flex-direction: column;
   width: 100%;
   max-width: 680px;
   height: 90vh;
   height: 90dvh;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-strong, var(--border));
   border-top-left-radius: var(--radius-lg, 18px);
   border-top-right-radius: var(--radius-lg, 18px);
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   animation: slideUpModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @media (min-width: 768px) {
-  .plan-preview-modal-panel {
+  .plan-preview-modal-panel,
+  .walkthrough-modal-panel {
     border-radius: var(--radius-lg, 16px);
     height: 85vh;
     height: 85dvh;
@@ -1808,33 +1814,38 @@ body.compact-mode .action-card-btn {
   }
 }
 
-.plan-preview-header {
+.plan-preview-header,
+.walkthrough-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-panel, var(--bg-card));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
   flex-shrink: 0;
 }
 
-.plan-preview-title-wrap {
+.plan-preview-title-wrap,
+.walkthrough-title-wrap {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.plan-preview-icon {
+.plan-preview-icon,
+.walkthrough-icon {
   font-size: 20px;
   flex-shrink: 0;
 }
 
-.plan-preview-title-col {
+.plan-preview-title-col,
+.walkthrough-title-col {
   min-width: 0;
 }
 
-.plan-preview-title {
+.plan-preview-title,
+.walkthrough-title {
   font-size: var(--font-size-md, 16px);
   font-weight: 700;
   color: var(--text-main);
@@ -1843,7 +1854,8 @@ body.compact-mode .action-card-btn {
   text-overflow: ellipsis;
 }
 
-.plan-preview-subtitle {
+.plan-preview-subtitle,
+.walkthrough-subtitle {
   font-size: 11px;
   color: var(--text-soft);
   white-space: nowrap;
@@ -1852,11 +1864,53 @@ body.compact-mode .action-card-btn {
   margin-top: 1px;
 }
 
-/* Plan Preview Body & Markdown Styling */
-.plan-preview-body {
+/* History Bar for Archiving & Browsing past plans/walkthroughs */
+.plan-history-bar,
+.walkthrough-history-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.plan-history-label,
+.walkthrough-history-label {
+  font-weight: 600;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.plan-history-select,
+.walkthrough-history-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-xs, 6px);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-main);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.plan-history-select:focus,
+.walkthrough-history-select:focus {
+  border-color: var(--accent);
+}
+
+/* Plan & Walkthrough Preview Body & Markdown Styling */
+.plan-preview-body,
+.walkthrough-body {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  background: var(--bg-secondary);
   color: var(--text-main);
   font-family: var(--font-main);
   font-size: 13.5px;
@@ -1887,91 +1941,91 @@ body.compact-mode .action-card-btn {
   to { transform: rotate(360deg); }
 }
 
-/* Markdown Elements inside Plan Preview */
-.plan-md h1 {
+/* Markdown Elements inside Plan & Walkthrough Preview */
+.plan-md h1, .walkthrough-md h1 {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
   margin: 0 0 12px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
-.plan-md h2 {
+.plan-md h2, .walkthrough-md h2 {
   font-size: 16px;
   font-weight: 700;
   color: var(--text-main);
   margin: 18px 0 10px 0;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--border);
 }
 
-.plan-md h3 {
+.plan-md h3, .walkthrough-md h3 {
   font-size: 14.5px;
   font-weight: 600;
   color: var(--accent);
   margin: 14px 0 8px 0;
 }
 
-.plan-md h4 {
+.plan-md h4, .walkthrough-md h4 {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--text-main);
   margin: 12px 0 6px 0;
 }
 
-.plan-md p {
+.plan-md p, .walkthrough-md p {
   margin: 0 0 10px 0;
 }
 
-.plan-md ul, .plan-md ol {
+.plan-md ul, .plan-md ol, .walkthrough-md ul, .walkthrough-md ol {
   margin: 0 0 12px 0;
   padding-left: 22px;
 }
 
-.plan-md li {
+.plan-md li, .walkthrough-md li {
   margin-bottom: 4px;
 }
 
-.plan-md hr {
+.plan-md hr, .walkthrough-md hr {
   border: none;
   height: 1px;
-  background: var(--border-color);
+  background: var(--border);
   margin: 16px 0;
 }
 
-.plan-md code {
+.plan-md code, .walkthrough-md code {
   font-family: var(--font-mono);
   font-size: 12px;
   padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-body);
+  border-radius: var(--radius-xs, 6px);
+  background: var(--bg-input, rgba(0, 0, 0, 0.05));
   color: var(--accent);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
-.plan-code-block {
+.plan-code-block, .walkthrough-code-block {
   position: relative;
-  background: var(--bg-body, #0d1117);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  background: var(--bg-primary, #0d1117);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 10px);
   margin: 10px 0 14px 0;
   overflow: hidden;
 }
 
-.plan-code-header {
+.plan-code-header, .walkthrough-code-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid var(--border-color);
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-soft);
   font-family: var(--font-mono);
 }
 
-.plan-code-block pre {
+.plan-code-block pre, .walkthrough-code-block pre {
   margin: 0;
   padding: 10px 12px;
   overflow-x: auto;
@@ -1979,9 +2033,10 @@ body.compact-mode .action-card-btn {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-main);
+  background: var(--bg-primary, #0d1117);
 }
 
-.plan-code-block pre code {
+.plan-code-block pre code, .walkthrough-code-block pre code {
   padding: 0;
   border: none;
   background: transparent;
@@ -2124,24 +2179,27 @@ body.compact-mode .action-card-btn {
   margin-top: 8px;
 }
 
-/* Plan Preview Modal Footer */
-.plan-preview-footer {
+/* Plan & Walkthrough Preview Modal Footers */
+.plan-preview-footer,
+.walkthrough-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
   flex-shrink: 0;
 }
 
-.plan-preview-footer .action-card-btn {
+.plan-preview-footer .action-card-btn,
+.walkthrough-footer .action-card-btn {
   flex: 1;
 }
 
-.plan-preview-footer .action-card-btn.primary {
-  flex: 1.5;
+.plan-preview-footer .action-card-btn.primary,
+.walkthrough-footer .action-card-btn.primary {
+  flex: 1.4;
 }
 
 /* Snoozed Plan Resume Chip */
@@ -2215,5 +2273,76 @@ body.compact-mode .action-card-btn {
     box-shadow: 0 0 14px rgba(29, 155, 240, 0.55);
   }
 }
+
+/* Action Card Target Workspace Badge & Header Right */
+.action-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-card-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill, 999px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all var(--transition-fast, 160ms ease);
+}
+
+.action-card-close-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.action-card-workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--accent-soft, rgba(255, 122, 162, 0.14));
+  color: var(--accent);
+  border: 1px solid var(--accent-border, rgba(255, 122, 162, 0.28));
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Walkthrough and Plan clickable chips in chat */
+.walkthrough-preview-chip,
+.plan-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin: 4px 0;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm, 10px);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--transition-fast, 160ms ease);
+}
+
+.walkthrough-preview-chip:hover,
+.plan-preview-chip:hover {
+  background: var(--accent);
+  color: var(--text-inverse);
+  transform: translateY(-1px);
+}
+
 
 

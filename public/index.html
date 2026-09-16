@@ -325,6 +325,10 @@
           </div>
           <button class="icon-btn" id="planPreviewCloseBtn" aria-label="Close preview">✕</button>
         </div>
+        <div class="plan-history-bar" id="planHistoryBar">
+          <label for="planHistorySelect" class="plan-history-label">📂 Plan Archive:</label>
+          <select id="planHistorySelect" class="plan-history-select" aria-label="Select implementation plan from history"></select>
+        </div>
         <div class="plan-preview-body" id="planPreviewBody">
           <div class="plan-preview-loading">
             <div class="plan-preview-spinner"></div>
@@ -342,9 +346,39 @@
           </div>
         </div>
         <div class="plan-preview-footer">
+          <button class="action-card-btn secondary" id="planPreviewDismissBtn" type="button" title="Dismiss this plan if already launched or rejected">Dismiss</button>
           <button class="action-card-btn secondary" id="planPreviewLaterBtn" type="button">Later</button>
           <button class="action-card-btn secondary" id="planPreviewReviewBtn" type="button">Review</button>
           <button class="action-card-btn primary" id="planPreviewProceedBtn" type="button">Proceed with Plan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Walkthrough Preview Modal -->
+    <div class="modal-overlay walkthrough-preview-overlay" id="walkthroughPreviewModal" aria-hidden="true">
+      <div class="walkthrough-modal-panel">
+        <div class="walkthrough-header">
+          <div class="walkthrough-title-wrap">
+            <span class="walkthrough-icon">📜</span>
+            <div class="walkthrough-title-col">
+              <div class="walkthrough-title">Walkthrough &amp; Summary</div>
+              <div class="walkthrough-subtitle" id="walkthroughSubtitle">Loading walkthrough...</div>
+            </div>
+          </div>
+          <button class="icon-btn" id="walkthroughCloseBtn" aria-label="Close preview">✕</button>
+        </div>
+        <div class="walkthrough-history-bar" id="walkthroughHistoryBar">
+          <label for="walkthroughHistorySelect" class="walkthrough-history-label">📂 Walkthrough History:</label>
+          <select id="walkthroughHistorySelect" class="walkthrough-history-select" aria-label="Select walkthrough from history"></select>
+        </div>
+        <div class="walkthrough-body" id="walkthroughBody">
+          <div class="walkthrough-loading">
+            <div class="plan-preview-spinner"></div>
+            <span>Loading walkthrough...</span>
+          </div>
+        </div>
+        <div class="walkthrough-footer">
+          <button class="action-card-btn secondary" id="walkthroughCloseFooterBtn" type="button">Close</button>
         </div>
       </div>
     </div>

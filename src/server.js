@@ -8,6 +8,7 @@
  */
 import './env.js';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -49,6 +50,11 @@ import {
     getGitSummary,
     gitAdd,
     findLatestImplementationPlan,
+    findRecentImplementationPlans,
+    findLatestWalkthrough,
+    findRecentWalkthroughs,
+    extractMarkdownTitle,
+    deriveWorkspaceNameFromPath,
     gitCommit,
     gitPush,
     listWorkspace,
@@ -3002,6 +3008,14 @@ export async function scanInteractivePrompts(cdp) {
         }
     })()`;
 
+    // Determine active target info
+    const currentTarget = availableTargets?.find(t => t.id === activeTargetId);
+    const targetTitle = currentTarget?.title || '';
+    let defaultWorkspace = '';
+    if (targetTitle) {
+        defaultWorkspace = targetTitle.split(' - ')[0].trim();
+    }
+
     for (const ctx of cdp.contexts) {
         try {
             const res = await cdp.call("Runtime.evaluate", {
@@ -3026,9 +3040,18 @@ export async function scanInteractivePrompts(cdp) {
                         if (plan) {
                             prompt.id = 'plan-' + Math.floor(plan.updatedAt / 1000).toString(36) + '-' + hashString(plan.content.slice(0, 100));
                             prompt.planPath = plan.path;
+                            prompt.planTitle = plan.title || 'Implementation Plan';
                             prompt.updatedAt = plan.updatedAt;
+                            if (plan.workspaceName) {
+                                prompt.workspaceName = plan.workspaceName;
+                            }
                         }
                     } catch (_) {}
+                }
+
+                prompt.targetTitle = targetTitle;
+                if (!prompt.workspaceName) {
+                    prompt.workspaceName = defaultWorkspace || 'Workspace';
                 }
 
                 // Check if this action ID was already acted on by the user
@@ -3050,6 +3073,7 @@ export async function scanInteractivePrompts(cdp) {
             if (plan && plan.updatedAt && (Date.now() - plan.updatedAt < 30 * 60 * 1000)) {
                 const planId = 'plan-' + Math.floor(plan.updatedAt / 1000).toString(36) + '-' + hashString(plan.content.slice(0, 100));
                 if (!actedActionIds.has(planId) && !actedActionIds.has('plan-approval')) {
+                    const wsName = plan.workspaceName || defaultWorkspace || 'Workspace';
                     return {
                         id: planId,
                         type: 'plan',
@@ -3059,6 +3083,9 @@ export async function scanInteractivePrompts(cdp) {
                         reviewText: 'Review',
                         hasPreview: true,
                         planPath: plan.path,
+                        planTitle: plan.title || 'Implementation Plan',
+                        workspaceName: wsName,
+                        targetTitle,
                         updatedAt: plan.updatedAt
                     };
                 }
@@ -4119,14 +4146,92 @@ export async function createServer() {
         res.json(result);
     });
 
-    // Get latest implementation plan for preview
+    // Get implementation plan for preview (latest or specific path)
     app.get('/api/plan', async (req, res) => {
         try {
-            const plan = await findLatestImplementationPlan();
+            const requestedPath = req.query.path ? String(req.query.path) : null;
+            let plan = null;
+            if (requestedPath && typeof requestedPath === 'string' && requestedPath.endsWith('.md')) {
+                try {
+                    const content = await fsp.readFile(requestedPath, 'utf-8');
+                    const stat = await fsp.stat(requestedPath);
+                    const title = extractMarkdownTitle(content, 'Implementation Plan');
+                    const workspaceName = deriveWorkspaceNameFromPath(requestedPath, content);
+                    plan = {
+                        path: requestedPath,
+                        content,
+                        title,
+                        workspaceName,
+                        updatedAt: stat.mtimeMs,
+                        id: 'plan-' + Math.floor(stat.mtimeMs / 1000).toString(36) + '-' + hashString(content.slice(0, 100))
+                    };
+                } catch (_) {}
+            }
+            if (!plan) {
+                plan = await findLatestImplementationPlan();
+            }
             if (!plan) {
                 return res.status(404).json({ error: 'No implementation plan found' });
             }
             res.json({ success: true, ...plan });
+        } catch (e) {
+            const error = /** @type {Error} */ (e);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Get list of recent implementation plans
+    app.get('/api/plans', async (req, res) => {
+        try {
+            const limit = Math.min(Math.max(parseInt(String(req.query.limit || '10'), 10) || 10, 1), 30);
+            const plans = await findRecentImplementationPlans(limit);
+            res.json({ success: true, plans });
+        } catch (e) {
+            const error = /** @type {Error} */ (e);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Get walkthrough for preview (latest or specific path)
+    app.get('/api/walkthrough', async (req, res) => {
+        try {
+            const requestedPath = req.query.path ? String(req.query.path) : null;
+            let wt = null;
+            if (requestedPath && typeof requestedPath === 'string' && requestedPath.endsWith('.md')) {
+                try {
+                    const content = await fsp.readFile(requestedPath, 'utf-8');
+                    const stat = await fsp.stat(requestedPath);
+                    const title = extractMarkdownTitle(content, 'Walkthrough');
+                    const workspaceName = deriveWorkspaceNameFromPath(requestedPath, content);
+                    wt = {
+                        path: requestedPath,
+                        content,
+                        title,
+                        workspaceName,
+                        updatedAt: stat.mtimeMs,
+                        id: 'wt-' + Math.floor(stat.mtimeMs / 1000).toString(36) + '-' + hashString(content.slice(0, 100))
+                    };
+                } catch (_) {}
+            }
+            if (!wt) {
+                wt = await findLatestWalkthrough();
+            }
+            if (!wt) {
+                return res.status(404).json({ error: 'No walkthrough found' });
+            }
+            res.json({ success: true, ...wt });
+        } catch (e) {
+            const error = /** @type {Error} */ (e);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Get list of recent walkthroughs
+    app.get('/api/walkthroughs', async (req, res) => {
+        try {
+            const limit = Math.min(Math.max(parseInt(String(req.query.limit || '10'), 10) || 10, 1), 30);
+            const walkthroughs = await findRecentWalkthroughs(limit);
+            res.json({ success: true, walkthroughs });
         } catch (e) {
             const error = /** @type {Error} */ (e);
             res.status(500).json({ error: error.message });
@@ -4157,17 +4262,21 @@ export async function createServer() {
         }
 
         if (decision === 'later' || decision === 'dismiss') {
+            const resolvedId = actionId || currentPendingAction?.id;
             if (currentPendingAction) {
-                const resolvedId = actionId || currentPendingAction.id;
                 currentPendingAction = null;
                 state.setCurrentPendingAction(null);
+            }
+            if (resolvedId) {
+                actedActionIds.add(resolvedId);
                 broadcast({
                     type: 'action_resolved',
                     actionId: resolvedId,
+                    decision,
                     timestamp: new Date().toISOString()
                 });
             }
-            return res.json({ success: true, executed: 'later' });
+            return res.json({ success: true, executed: decision });
         }
 
         const isMockAction = actionId?.includes('mock') || currentPendingAction?.id?.includes('mock');

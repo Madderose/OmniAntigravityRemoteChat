@@ -778,18 +778,37 @@ function renderPlanMarkdown(markdown) {
 /**
  * Opens the mobile implementation plan preview modal.
  */
-async function openPlanPreviewModal() {
+/**
+ * Opens the mobile implementation plan preview modal.
+ * @param {string} [planPath]
+ */
+async function openPlanPreviewModal(planPath) {
   const modal = document.getElementById('planPreviewModal');
   const body = document.getElementById('planPreviewBody');
   const subtitle = document.getElementById('planPreviewSubtitle');
   const drawer = document.getElementById('planPreviewReviewDrawer');
   const reviewInput = document.getElementById('planPreviewFeedbackInput');
+  const historySelect = document.getElementById('planHistorySelect');
   if (!modal || !body) return;
 
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
   if (drawer) drawer.style.display = 'none';
   if (reviewInput) reviewInput.value = '';
+
+  // Populate plan archive dropdown asynchronously
+  fetchWithAuth('/api/plans?limit=10').then(r => r.json()).then(data => {
+    if (data.success && Array.isArray(data.plans) && historySelect) {
+      historySelect.innerHTML = data.plans.map(p => {
+        const ws = p.workspaceName ? `[${p.workspaceName}] ` : '';
+        const dateStr = p.updatedAt ? new Date(p.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        return `<option value="${escapeHtml(p.path)}" data-id="${escapeHtml(p.id)}">${escapeHtml(ws + p.title)} (${dateStr})</option>`;
+      }).join('');
+      if (currentPlanData?.path) {
+        historySelect.value = currentPlanData.path;
+      }
+    }
+  }).catch(() => {});
 
   body.innerHTML = `
     <div class="plan-preview-loading">
@@ -799,7 +818,8 @@ async function openPlanPreviewModal() {
   `;
 
   try {
-    const res = await fetchWithAuth('/api/plan');
+    const url = planPath ? `/api/plan?path=${encodeURIComponent(planPath)}` : '/api/plan';
+    const res = await fetchWithAuth(url);
     const data = await res.json();
     if (!res.ok || !data.success) {
       body.innerHTML = `
@@ -813,11 +833,15 @@ async function openPlanPreviewModal() {
     }
 
     currentPlanData = data;
+    if (historySelect) {
+      historySelect.value = data.path;
+    }
     updateHeaderPlanButton(true);
     const timeStr = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently';
+    const wsBadge = data.workspaceName ? `📂 ${data.workspaceName} · ` : '';
     const filename = data.path ? data.path.split('/').slice(-2).join('/') : 'implementation_plan.md';
     if (subtitle) {
-      subtitle.textContent = `${filename} · Updated ${timeStr}`;
+      subtitle.textContent = `${wsBadge}${filename} · Updated ${timeStr}`;
     }
 
     body.innerHTML = renderPlanMarkdown(data.content);
@@ -884,6 +908,7 @@ async function checkPlanStatus() {
 function setupPlanPreviewModal() {
   const modal = document.getElementById('planPreviewModal');
   const closeBtn = document.getElementById('planPreviewCloseBtn');
+  const dismissBtn = document.getElementById('planPreviewDismissBtn');
   const laterBtn = document.getElementById('planPreviewLaterBtn');
   const reviewBtn = document.getElementById('planPreviewReviewBtn');
   const proceedBtn = document.getElementById('planPreviewProceedBtn');
@@ -892,12 +917,32 @@ function setupPlanPreviewModal() {
   const drawerSubmitBtn = document.getElementById('planPreviewReviewSubmitBtn');
   const feedbackInput = document.getElementById('planPreviewFeedbackInput');
   const headerPlanBtn = document.getElementById('headerPlanBtn');
+  const historySelect = document.getElementById('planHistorySelect');
+
+  historySelect?.addEventListener('change', () => {
+    if (historySelect.value) {
+      openPlanPreviewModal(historySelect.value);
+    }
+  });
 
   headerPlanBtn?.addEventListener('click', () => {
     openPlanPreviewModal();
   });
 
   closeBtn?.addEventListener('click', () => {
+    closePlanPreviewModal();
+  });
+
+  dismissBtn?.addEventListener('click', async () => {
+    const planId = currentPlanData?.id || activeActionData?.id || 'plan-approval';
+    await respondToInteractiveAction({
+      actionId: planId,
+      type: 'plan',
+      decision: 'dismiss'
+    });
+    activeActionData = null;
+    const slot = document.getElementById('actionCardSlot');
+    if (slot) slot.innerHTML = '';
     closePlanPreviewModal();
   });
 
@@ -941,7 +986,7 @@ function setupPlanPreviewModal() {
     drawerSubmitBtn.textContent = 'Submitting...';
     try {
       await respondToInteractiveAction({
-        actionId: activeActionData?.id || 'plan-approval',
+        actionId: activeActionData?.id || currentPlanData?.id || 'plan-approval',
         type: 'plan',
         decision: 'review',
         feedback
@@ -954,14 +999,19 @@ function setupPlanPreviewModal() {
   });
 
   proceedBtn?.addEventListener('click', async () => {
+    const planId = currentPlanData?.id || activeActionData?.id || 'plan-approval';
     proceedBtn.disabled = true;
     proceedBtn.textContent = 'Starting...';
     try {
       await respondToInteractiveAction({
-        actionId: activeActionData?.id || 'plan-approval',
+        actionId: planId,
         type: 'plan',
-        decision: 'proceed'
+        decision: 'proceed',
+        planPath: currentPlanData?.path
       });
+      activeActionData = null;
+      const slot = document.getElementById('actionCardSlot');
+      if (slot) slot.innerHTML = '';
       closePlanPreviewModal();
     } finally {
       proceedBtn.disabled = false;
@@ -972,6 +1022,159 @@ function setupPlanPreviewModal() {
   modal?.addEventListener('click', (e) => {
     if (e.target === modal) {
       closePlanPreviewModal();
+    }
+  });
+}
+
+let currentWalkthroughData = null;
+
+/**
+ * Opens the mobile walkthrough preview modal.
+ * @param {string} [wtPath]
+ */
+async function openWalkthroughPreviewModal(wtPath) {
+  const modal = document.getElementById('walkthroughPreviewModal');
+  const body = document.getElementById('walkthroughBody');
+  const subtitle = document.getElementById('walkthroughSubtitle');
+  const historySelect = document.getElementById('walkthroughHistorySelect');
+  if (!modal || !body) return;
+
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+
+  // Populate history dropdown
+  fetchWithAuth('/api/walkthroughs?limit=10').then(r => r.json()).then(data => {
+    if (data.success && Array.isArray(data.walkthroughs) && historySelect) {
+      historySelect.innerHTML = data.walkthroughs.map(w => {
+        const ws = w.workspaceName ? `[${w.workspaceName}] ` : '';
+        const dateStr = w.updatedAt ? new Date(w.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        return `<option value="${escapeHtml(w.path)}" data-id="${escapeHtml(w.id)}">${escapeHtml(ws + w.title)} (${dateStr})</option>`;
+      }).join('');
+      if (currentWalkthroughData?.path) {
+        historySelect.value = currentWalkthroughData.path;
+      }
+    }
+  }).catch(() => {});
+
+  body.innerHTML = `
+    <div class="walkthrough-loading">
+      <div class="plan-preview-spinner"></div>
+      <span>Loading walkthrough...</span>
+    </div>
+  `;
+
+  try {
+    const url = wtPath ? `/api/walkthrough?path=${encodeURIComponent(wtPath)}` : '/api/walkthrough';
+    const res = await fetchWithAuth(url);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      body.innerHTML = `
+        <div class="plan-alert warning">
+          <div class="plan-alert-title">⚠️ Notice</div>
+          <div class="plan-alert-body">${escapeHtml(data.error || 'No walkthrough document found.')}</div>
+        </div>
+      `;
+      if (subtitle) subtitle.textContent = 'Walkthrough not found';
+      return;
+    }
+
+    currentWalkthroughData = data;
+    if (historySelect) {
+      historySelect.value = data.path;
+    }
+    const timeStr = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently';
+    const wsBadge = data.workspaceName ? `📂 ${data.workspaceName} · ` : '';
+    const filename = data.path ? data.path.split('/').slice(-2).join('/') : 'walkthrough.md';
+    if (subtitle) {
+      subtitle.textContent = `${wsBadge}${filename} · Updated ${timeStr}`;
+    }
+
+    body.innerHTML = renderPlanMarkdown(data.content);
+
+    if (window.Prism) {
+      try { window.Prism.highlightAllUnder(body); } catch (_) {}
+    }
+  } catch (err) {
+    body.innerHTML = `
+      <div class="plan-alert caution">
+        <div class="plan-alert-title">Error</div>
+        <div class="plan-alert-body">${escapeHtml(err.message || 'Failed to load walkthrough')}</div>
+      </div>
+    `;
+    if (subtitle) subtitle.textContent = 'Error loading walkthrough';
+  }
+}
+
+/**
+ * Closes the walkthrough preview modal.
+ */
+function closeWalkthroughPreviewModal() {
+  const modal = document.getElementById('walkthroughPreviewModal');
+  if (!modal) return;
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+/**
+ * Sets up global event listeners for the walkthrough preview modal.
+ */
+function setupWalkthroughPreviewModal() {
+  const modal = document.getElementById('walkthroughPreviewModal');
+  const closeBtn = document.getElementById('walkthroughCloseBtn');
+  const closeFooterBtn = document.getElementById('walkthroughCloseFooterBtn');
+  const historySelect = document.getElementById('walkthroughHistorySelect');
+
+  closeBtn?.addEventListener('click', closeWalkthroughPreviewModal);
+  closeFooterBtn?.addEventListener('click', closeWalkthroughPreviewModal);
+
+  historySelect?.addEventListener('change', () => {
+    if (historySelect.value) {
+      openWalkthroughPreviewModal(historySelect.value);
+    }
+  });
+
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeWalkthroughPreviewModal();
+    }
+  });
+}
+
+/**
+ * Enriches links and text in chat to make walkthrough.md and implementation_plan.md clickable preview chips.
+ */
+function enrichChatArtifactLinks() {
+  const chatContent = document.getElementById('chatContent');
+  if (!chatContent) return;
+
+  chatContent.querySelectorAll('a, [role="button"], code, span').forEach((el) => {
+    const href = el.getAttribute('href') || el.getAttribute('data-href') || el.getAttribute('data-url') || '';
+    const text = (el.textContent || '').trim();
+
+    if (href.includes('walkthrough.md') || text === 'walkthrough.md' || text === 'Walkthrough' || (text.includes('walkthrough.md') && el.tagName !== 'A' && !el.querySelector('a'))) {
+      if (!el.hasAttribute('data-omni-wt-bound')) {
+        el.setAttribute('data-omni-wt-bound', 'true');
+        el.classList.add('walkthrough-preview-chip');
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const cleanPath = href.replace(/^file:\/\//, '') || '';
+          openWalkthroughPreviewModal(cleanPath);
+        });
+      }
+    } else if (href.includes('implementation_plan.md') || text === 'implementation_plan.md' || (text.includes('implementation_plan.md') && el.tagName !== 'A' && !el.querySelector('a'))) {
+      if (!el.hasAttribute('data-omni-plan-bound')) {
+        el.setAttribute('data-omni-plan-bound', 'true');
+        el.classList.add('plan-preview-chip');
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const cleanPath = href.replace(/^file:\/\//, '') || '';
+          openPlanPreviewModal(cleanPath);
+        });
+      }
     }
   });
 }
@@ -1138,12 +1341,16 @@ function renderActionCard(actionData) {
   } else if (type === 'plan') {
     footerHtml = `
       <div class="action-card-footer" id="actionPlanFooter">
-        <button type="button" class="action-card-btn secondary" id="actionBtnDismiss">Later</button>
+        <button type="button" class="action-card-btn secondary" id="actionBtnDismiss">Dismiss</button>
         <button type="button" class="action-card-btn secondary" id="actionBtnReview">${escapeHtml(actionData.reviewText || 'Review')}</button>
         <button type="button" class="action-card-btn primary" id="actionBtnProceed">${escapeHtml(proceedText || 'Proceed with Plan')}</button>
       </div>
     `;
   }
+
+  const workspaceBadgeHtml = actionData.workspaceName ? `
+    <span class="action-card-workspace-badge" title="${escapeHtml(actionData.targetTitle || actionData.workspaceName)}">📂 ${escapeHtml(actionData.workspaceName)}</span>
+  ` : '';
 
   slot.innerHTML = `
     <div class="floating-action-card" id="floatingActionCard" data-action-id="${id}">
@@ -1152,8 +1359,12 @@ function renderActionCard(actionData) {
         <div class="action-card-title-group">
           <span class="action-card-icon">${type === 'command' ? '⚡' : type === 'plan' ? '📋' : '❓'}</span>
           <span class="action-card-title">${escapeHtml(title || 'Decision Required')}</span>
+          ${workspaceBadgeHtml}
         </div>
-        ${riskBadgeHtml}
+        <div class="action-card-header-right">
+          ${riskBadgeHtml}
+          <button type="button" class="action-card-close-btn" id="actionBtnCardDismiss" title="Dismiss action" aria-label="Dismiss action">✕</button>
+        </div>
       </div>
       ${bodyHtml}
       ${footerHtml}
@@ -1162,6 +1373,17 @@ function renderActionCard(actionData) {
 
   const card = document.getElementById('floatingActionCard');
   if (!card) return;
+
+  // Header right dismiss button
+  card.querySelector('#actionBtnCardDismiss')?.addEventListener('click', async () => {
+    await respondToInteractiveAction({
+      actionId: id,
+      type: actionData.type,
+      decision: 'dismiss'
+    });
+    activeActionData = null;
+    slot.innerHTML = '';
+  });
 
   // Swipe-down dismiss on handle
   let cardTouchStartY = 0;
@@ -1341,30 +1563,16 @@ function renderActionCard(actionData) {
       }
     });
 
-    // 4. Later (snooze)
-    dismissBtn?.addEventListener('click', () => {
-      snoozedActionId = id;
-      actedActionIds.add(id);
-
-      // Notify server to dismiss pending prompt
-      fetchWithAuth('/api/action/respond', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionId: id, type: 'plan', decision: 'later' })
-      }).catch(() => {});
-
-      slot.innerHTML = `
-        <div class="plan-snooze-chip" id="planSnoozeResumeBtn" title="Tap to resume plan approval">
-          <span>📋 ${escapeHtml(title || 'Plan Approval')}</span>
-          <span style="font-weight: normal; opacity: 0.85;">· Tap to review</span>
-        </div>
-      `;
-      document.getElementById('planSnoozeResumeBtn')?.addEventListener('click', () => {
-        snoozedActionId = null;
-        actedActionIds.delete(id);
-        actedActionIds.delete('plan-approval');
-        renderActionCard(actionData);
+    // 4. Dismiss action
+    dismissBtn?.addEventListener('click', async () => {
+      snoozedActionId = null;
+      await respondToInteractiveAction({
+        actionId: id,
+        type: 'plan',
+        decision: 'dismiss'
       });
+      activeActionData = null;
+      slot.innerHTML = '';
     });
   }
 }
@@ -1393,8 +1601,13 @@ async function respondToInteractiveAction(payload) {
         ? (payload.feedback ? 'Plan review submitted' : 'Plan review opened')
         : payload.decision === 'proceed'
           ? 'Plan execution started'
-          : 'Action executed successfully';
+          : payload.decision === 'dismiss'
+            ? 'Action dismissed'
+            : payload.decision === 'later'
+              ? 'Action snoozed'
+              : 'Action executed successfully';
       showSlideInNotification(successMsg, 'success');
+      activeActionData = null;
       renderActionCard(null);
     } else {
       if (payload?.actionId) actedActionIds.delete(payload.actionId);
@@ -2002,6 +2215,7 @@ function renderSnapshot(payload, options = {}) {
     details.setAttribute('open', '')
   );
   addMobileCopyButtons();
+  enrichChatArtifactLinks();
 
   const isGenerating = Boolean(
     payload.isGenerating ||
@@ -3636,6 +3850,7 @@ registerServiceWorker();
 checkSslStatus();
 setupTouchGestures();
 setupPlanPreviewModal();
+setupWalkthroughPreviewModal();
 connectWebSocket();
 fetchAppState();
 loadQuickCommands();
