@@ -9,17 +9,17 @@
 
 | Total Tickets | Ouverts (`OPEN`) | En cours (`IN_PROGRESS`) | Résolus (`RESOLVED`) | Classés sans suite (`WONTFIX`) |
 |:---:|:---:|:---:|:---:|:---:|
-| **36** | **11** | **0** | **25** | **0** |
+| **37** | **12** | **0** | **25** | **0** |
 
 ### Répartition par Sévérité
 - **P0 (Bloquant / Sécurité Critique)** : 3 tickets (3 résolus)
-- **P1 (Majeur / Bogue Applicatif / Concurrence)** : 13 tickets (13 résolus)
+- **P1 (Majeur / Bogue Applicatif / Concurrence)** : 14 tickets (13 résolus, 1 ouvert)
 - **P2 (Normal / Lacune Test E2E / Ergonomie)** : 16 tickets (7 résolus, 9 ouverts)
 - **P3 (Mineur / Polish / Dette Technique)** : 4 tickets (2 résolus, 2 ouverts)
 
 ### Répartition par Catégorie
 - **`SECURITY`** : 5 tickets (5 résolus)
-- **`BUG`** : 8 tickets (8 résolus)
+- **`BUG`** : 9 tickets (8 résolus, 1 ouvert)
 - **`CONCURRENCY`** : 5 tickets (5 résolus)
 - **`E2E_GAP`** : 14 tickets (4 résolus, 10 ouverts)
 - **`A11Y`** : 2 tickets (1 résolu, 1 ouvert)
@@ -28,7 +28,7 @@
 
 ---
 
-## 📋 Tableau Complet des 36 Tickets d'Audit
+## 📋 Tableau Complet des 37 Tickets d'Audit
 
 | ID Ticket | Domaine | Titre de l'Anomalie | Sév. | Cat. | Statut | Fichier Clé | Fichier Ticket |
 |---|---|---|:---:|:---:|:---:|---|---|
@@ -42,6 +42,7 @@
 | `TICKET-DOM03-002` | Domaine 3 — Éditeur Lexical | Manque de couverture E2E sur la validation des limites de staging avant soumission | P2 | E2E_GAP | `RESOLVED` | `src/server.js:1920` | [TICKET-DOM03-002](file:///.agents/tickets/TICKET-DOM03-002-e2e-lexical-staging-boundary-validation.md) |
 | `TICKET-DOM04-001` | Domaine 4 — Questions & Approbations | Absence de validation stricte sur l'index d'option soumis dans `/api/interact-action` | P1 | BUG | `RESOLVED` | `src/server.js:3767` | [TICKET-DOM04-001](file:///.agents/tickets/TICKET-DOM04-001-interact-action-unvalidated-option-index.md) |
 | `TICKET-DOM04-002` | Domaine 4 — Questions & Approbations | Couverture E2E incomplète sur l'interception `ask_question` et verrous de grâce | P2 | E2E_GAP | `OPEN` | `test/unit/action-decision.test.js` | [TICKET-DOM04-002](file:///.agents/tickets/TICKET-DOM04-002-e2e-ask-question-optimistic-tap-and-grace-lock.md) |
+| `TICKET-DOM04-003` | Domaine 4 — Questions & Approbations | Impossibilité de réviser et valider un plan d'implémentation sur l'interface mobile | P1 | BUG | `OPEN` | `src/server.js:2966` | [TICKET-DOM04-003](file:///.agents/tickets/TICKET-DOM04-003-mobile-plan-review-preview-and-approval-interception.md) |
 | `TICKET-DOM05-001` | Domaine 5 — Snapshot & WebSocket | Absence de contrôle de contre-pression (backpressure) et purge des sockets lents | P1 | PERF | `RESOLVED` | `src/server.js:4980` | [TICKET-DOM05-001](file:///.agents/tickets/TICKET-DOM05-001-websocket-broadcast-backpressure-and-dead-client-prune.md) |
 | `TICKET-DOM05-002` | Domaine 5 — Snapshot & WebSocket | Lacune de test E2E simulant la réconciliation morphdom-lite et reconnexion WS | P2 | E2E_GAP | `OPEN` | `public/js/vendor/morphdom-lite.js` | [TICKET-DOM05-002](file:///.agents/tickets/TICKET-DOM05-002-e2e-snapshot-hash-diff-and-reconnection.md) |
 | `TICKET-DOM06-001` | Domaine 6 — Authentification & Sécurité | Faille P0 dans `isLocalRequest` autorisant par erreur les blocs IP publics `172.x` | P0 | SECURITY | `RESOLVED` | `src/utils/network.js:59` | [TICKET-DOM06-001](file:///.agents/tickets/TICKET-DOM06-001-lan-auth-bypass-ip-cidr-leak.md) |
