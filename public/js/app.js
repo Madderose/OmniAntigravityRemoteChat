@@ -1199,6 +1199,69 @@ function enrichChatArtifactLinks() {
           openPlanPreviewModal(cleanPath);
         });
       }
+    } else if (
+      (href && (href.includes('voice-memo') || /\.(webm|wav|ogg|mp3)(\?|$)/i.test(href))) ||
+      (el.tagName === 'A' && text.toLowerCase().includes('voice memo'))
+    ) {
+      if (!el.hasAttribute('data-omni-audio-bound')) {
+        el.setAttribute('data-omni-audio-bound', 'true');
+        const rawFilename = (href ? href.split('/').pop() : text.replace(/^Voice memo:\s*/i, '')).split('?')[0] || 'voice-memo.webm';
+        const cleanName = rawFilename.replace(/^(\d+-)+/, '') || 'Voice Memo';
+        const audioSrc = `/data/uploads/${encodeURIComponent(rawFilename)}`;
+
+        const widget = document.createElement('div');
+        widget.className = 'chat-voice-memo-widget';
+        widget.innerHTML = `
+          <div class="chat-voice-memo-header">
+            <span class="chat-voice-memo-icon">🎙️</span>
+            <span class="chat-voice-memo-title">${escapeHtml(cleanName)}</span>
+          </div>
+          <audio class="chat-voice-memo-audio" controls preload="metadata" src="${audioSrc}"></audio>
+        `;
+        el.parentNode.insertBefore(widget, el);
+        el.style.display = 'none';
+      }
+    }
+  });
+
+  // Also convert raw markdown [Voice memo: ...](...) in text content
+  const rawMemoRegex = /\[Voice memo:\s*([^\]]+)\]\(([^)]+)\)/g;
+  chatContent.querySelectorAll('p, div, span').forEach((el) => {
+    if (el.querySelector('.chat-voice-memo-widget')) return;
+    if (el.children.length > 0 && Array.from(el.children).some(c => c.tagName === 'P' || c.tagName === 'DIV')) return;
+    if (!el.textContent || !el.textContent.includes('[Voice memo:')) return;
+    if (el.hasAttribute('data-omni-raw-memo-bound')) return;
+
+    el.setAttribute('data-omni-raw-memo-bound', 'true');
+    const content = el.innerHTML;
+    let match;
+    const matches = [];
+    while ((match = rawMemoRegex.exec(content)) !== null) {
+      matches.push({
+        raw: match[0],
+        title: match[1].trim(),
+        path: match[2].trim()
+      });
+    }
+
+    if (matches.length > 0) {
+      let updatedHtml = content;
+      matches.forEach((m) => {
+        const fileName = (m.path.split('/').pop() || m.title).split('?')[0];
+        const cleanName = fileName.replace(/^(\d+-)+/, '') || 'Voice Memo';
+        const audioSrc = `/data/uploads/${encodeURIComponent(fileName)}`;
+        const widgetHtml = `
+          <div class="chat-voice-memo-widget">
+            <div class="chat-voice-memo-header">
+              <span class="chat-voice-memo-icon">🎙️</span>
+              <span class="chat-voice-memo-title">${escapeHtml(cleanName)}</span>
+            </div>
+            <audio class="chat-voice-memo-audio" controls preload="metadata" src="${audioSrc}"></audio>
+          </div>
+        `;
+        updatedHtml = updatedHtml.replace(m.raw, widgetHtml);
+      });
+      el.innerHTML = updatedHtml;
     }
   });
 }
@@ -3406,9 +3469,12 @@ function connectWebSocket() {
 }
 
 sendBtn.addEventListener('click', sendMessage);
-refreshBtn.addEventListener('click', () => {
+refreshBtn?.addEventListener('click', () => {
+  const dropdown = document.getElementById('headerOverflowDropdown');
+  if (dropdown) dropdown.hidden = true;
   loadSnapshot();
   fetchAppState();
+  showSlideInNotification('Snapshot refreshed', 'info');
 });
 stopBtn.addEventListener('click', async () => {
   try {

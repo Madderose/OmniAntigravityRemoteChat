@@ -254,9 +254,13 @@ body.compact-mode .header,
   gap: 6px;
 }
 
+body.compact-mode .brand-title-short,
+.compact-mode .brand-title-short,
 body.compact-mode .brand-title-full,
-.compact-mode .brand-title-full {
-  display: none;
+.compact-mode .brand-title-full,
+body.compact-mode .brand-mark h1,
+.compact-mode .brand-mark h1 {
+  display: none !important;
 }
 
 body.compact-mode .header-subtitle,

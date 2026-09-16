@@ -1,4 +1,4 @@
-const CACHE_NAME = 'omni-antigravity-shell-v1.5.0';
+const CACHE_NAME = 'omni-antigravity-shell-v1.5.2';
 const APP_SHELL = [
   '/',
   '/index.html',

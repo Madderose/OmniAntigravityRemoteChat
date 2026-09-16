@@ -1169,34 +1169,59 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
                         clipboardData: dt,
                         composed: true
                     });
-                    inserted = editor.dispatchEvent(pasteEvent);
+                    editor.dispatchEvent(pasteEvent);
+                    // Wait briefly for Lexical to register the paste event
+                    await new Promise(r => setTimeout(r, 60));
+                    const current = (editor.innerText || editor.textContent || "").trim();
+                    if (current.length > 0) {
+                        inserted = true;
+                    }
                 }
             } catch (_) {}
 
             // Priority B: If paste event was unhandled or didn't populate text, try document.execCommand
-            if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
-                try { inserted = !!document.execCommand?.("insertText", false, textToInsert); } catch {}
+            if (!inserted && !(editor.innerText || editor.textContent || "").trim()) {
+                try {
+                    inserted = !!document.execCommand?.("insertText", false, textToInsert);
+                    await new Promise(r => setTimeout(r, 40));
+                } catch {}
             }
 
-            // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy
-            if (!inserted || !(editor.innerText || editor.textContent || "").trim()) {
-                const LF = String.fromCharCode(10);
-                const CR = String.fromCharCode(13);
-                const hasNewlines = textToInsert.indexOf(LF) !== -1;
-                if (hasNewlines) {
-                    editor.innerHTML = textToInsert
-                        .split(LF)
-                        .map(function(line) {
-                            var cleanLine = line.split(CR).join('');
-                            var safe = cleanLine ? cleanLine.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br>';
-                            return '<p dir="ltr"><span data-lexical-text="true">' + safe + '</span></p>';
-                        })
-                        .join('');
-                } else {
-                    editor.textContent = textToInsert;
-                }
-                editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
-                editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
+            // Priority C: Structured paragraph injection preserving Lexical DOM hierarchy (TrustedHTML safe)
+            if (!inserted && !(editor.innerText || editor.textContent || "").trim()) {
+                try {
+                    const LF = String.fromCharCode(10);
+                    const CR = String.fromCharCode(13);
+                    const hasNewlines = textToInsert.indexOf(LF) !== -1;
+                    editor.textContent = "";
+                    if (hasNewlines) {
+                        const lines = textToInsert.split(LF);
+                        for (const line of lines) {
+                            const cleanLine = line.split(CR).join("");
+                            const p = document.createElement("p");
+                            p.setAttribute("dir", "ltr");
+                            if (cleanLine) {
+                                const span = document.createElement("span");
+                                span.setAttribute("data-lexical-text", "true");
+                                span.textContent = cleanLine;
+                                p.appendChild(span);
+                            } else {
+                                p.appendChild(document.createElement("br"));
+                            }
+                            editor.appendChild(p);
+                        }
+                    } else {
+                        const p = document.createElement("p");
+                        p.setAttribute("dir", "ltr");
+                        const span = document.createElement("span");
+                        span.setAttribute("data-lexical-text", "true");
+                        span.textContent = textToInsert;
+                        p.appendChild(span);
+                        editor.appendChild(p);
+                    }
+                    editor.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
+                    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: textToInsert, composed: true }));
+                } catch (_) {}
             }
 
             // Wait for Lexical / Preact to register input state
@@ -3936,6 +3961,7 @@ export async function createServer() {
     });
 
     app.use('/uploads', express.static(uploadsDir));
+    app.use('/data/uploads', express.static(uploadsDir));
     app.use(express.static(join(PROJECT_ROOT, 'public')));
 
     // Login endpoint
@@ -4854,9 +4880,11 @@ export async function createServer() {
 
             let savedImage = null;
             let savedAudio = null;
+            let cleanImgData = null;
+            let cleanAudioData = null;
 
             if (image?.data) {
-                const cleanImgData = String(image.data).replace(/^data:[^;]+;base64,/, '');
+                cleanImgData = String(image.data).replace(/^data:[^;]+;base64,/, '');
                 savedImage = await saveUploadedImage({
                     name: image.name,
                     mimeType: image.mimeType,
@@ -4865,7 +4893,7 @@ export async function createServer() {
             }
 
             if (audio?.data) {
-                const cleanAudioData = String(audio.data).replace(/^data:[^;]+;base64,/, '');
+                cleanAudioData = String(audio.data).replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
                 savedAudio = await saveUploadedAudio({
                     name: audio.name,
                     mimeType: audio.mimeType,
