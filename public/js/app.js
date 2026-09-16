@@ -1347,6 +1347,10 @@ function enrichChatArtifactLinks() {
       });
     }
   });
+
+  // Also convert raw markdown [Voice memo: ...](...) in text content
+  const rawMemoRegex = /\[Voice memo:\s*([^\]]+)\]\(([^)]+)\)/g;
+  chatContent.querySelectorAll('p, div, span').forEach((el) => {
     if (el.querySelector('.chat-voice-memo-widget')) return;
     if (el.children.length > 0 && Array.from(el.children).some(c => c.tagName === 'P' || c.tagName === 'DIV')) return;
     if (!el.textContent || !el.textContent.includes('[Voice memo:')) return;
