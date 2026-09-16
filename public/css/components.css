@@ -2302,7 +2302,7 @@ body.compact-mode .action-card-btn {
   transform: translateY(-1px);
 }
 
-/* Header Plan Shortcut Pill (Icon Only) */
+/* Header Plan Shortcut Button (Icon Only) */
 .header-plan-btn {
   display: inline-flex;
   align-items: center;
@@ -2310,26 +2310,40 @@ body.compact-mode .action-card-btn {
   width: 34px;
   height: 34px;
   min-width: 34px;
-  background: rgba(29, 155, 240, 0.15);
-  border: 1px solid var(--accent, #1d9bf0);
+  background: var(--bg-card, #1c2438);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   border-radius: 50%;
   padding: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--accent, #1d9bf0);
+  color: var(--text-secondary, #94a3b8);
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(29, 155, 240, 0.25);
+  box-shadow: none;
   transition: all var(--transition-fast, 0.15s ease);
-  animation: planPulseGlow 2.5s infinite ease-in-out;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .header-plan-btn:hover {
+  background: rgba(29, 155, 240, 0.15);
+  border-color: var(--accent, #1d9bf0);
+  color: var(--accent, #1d9bf0);
+  transform: translateY(-1px);
+}
+
+.header-plan-btn.pending {
+  background: rgba(29, 155, 240, 0.18);
+  border-color: var(--accent, #1d9bf0);
+  color: var(--accent, #1d9bf0);
+  box-shadow: 0 0 10px rgba(29, 155, 240, 0.35);
+  animation: planPulseGlow 2.5s infinite ease-in-out;
+}
+
+.header-plan-btn.pending:hover {
   background: var(--accent, #1d9bf0);
   color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 0 14px rgba(29, 155, 240, 0.45);
+  box-shadow: 0 0 14px rgba(29, 155, 240, 0.55);
 }
 
 .header-plan-btn.hidden {
@@ -2343,6 +2357,13 @@ body.compact-mode .action-card-btn {
 
 .header-plan-btn .plan-pill-text {
   display: none !important;
+}
+
+body.compact-mode .header-plan-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  font-size: 13px;
 }
 
 @keyframes planPulseGlow {

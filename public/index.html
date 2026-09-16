@@ -21,7 +21,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/css/style.css?v=1.3.5" />
+    <link rel="stylesheet" href="/css/style.css?v=1.5.3" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
@@ -45,7 +45,7 @@
           </div>
         </div>
         <div class="header-controls">
-          <button class="header-plan-btn hidden" id="headerPlanBtn" aria-label="Implementation Plan" title="Implementation Plan">
+          <button class="header-plan-btn" id="headerPlanBtn" aria-label="Implementation Plan" title="Implementation Plan">
             <span class="plan-pill-icon">📋</span>
           </button>
           <button class="icon-btn new-chat-btn" id="newChatBtn" aria-label="New Chat" title="New Chat">
@@ -75,6 +75,13 @@
             </button>
             <div class="overflow-dropdown" id="headerOverflowDropdown" hidden>
               <div class="overflow-dropdown-group">
+                <button class="overflow-item" id="overflowPlanBtn">
+                  <span class="overflow-item-icon">📋</span>
+                  <div class="overflow-item-text">
+                    <strong>Implementation Plans</strong>
+                    <small id="overflowPlanStatusText">View & archive</small>
+                  </div>
+                </button>
                 <a class="overflow-item" href="/minimal" target="_blank" rel="noreferrer">
                   <span class="overflow-item-icon">⚡</span>
                   <div class="overflow-item-text">
@@ -438,6 +445,6 @@
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"
     ></script>
-    <script type="module" src="/js/app.js?v=1.5.2"></script>
+    <script type="module" src="/js/app.js?v=1.5.3"></script>
   </body>
 </html>

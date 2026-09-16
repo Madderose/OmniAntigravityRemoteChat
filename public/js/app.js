@@ -902,12 +902,24 @@ function closePlanPreviewModal() {
  */
 function updateHeaderPlanButton(forceState) {
   const btn = document.getElementById('headerPlanBtn');
-  if (!btn) return;
+  const overflowPlanStatus = document.getElementById('overflowPlanStatusText');
   const isPlanActive = typeof forceState === 'boolean'
     ? forceState
     : ((activeActionData && activeActionData.type === 'plan') ||
        (currentPlanData && (Date.now() - (currentPlanData.updatedAt || 0) < 30 * 60 * 1000)));
-  btn.classList.toggle('hidden', !isPlanActive);
+
+  if (btn) {
+    btn.classList.remove('hidden');
+    btn.classList.toggle('pending', !!isPlanActive);
+    btn.title = isPlanActive
+      ? 'Implementation Plan (Pending Approval)'
+      : 'Implementation Plans (Archive)';
+    btn.setAttribute('aria-label', btn.title);
+  }
+
+  if (overflowPlanStatus) {
+    overflowPlanStatus.textContent = isPlanActive ? 'Pending Approval' : 'View & archive';
+  }
 }
 
 /**
@@ -922,8 +934,12 @@ async function checkPlanStatus() {
       currentPlanData = data;
       const isFresh = (Date.now() - data.updatedAt) < 30 * 60 * 1000;
       updateHeaderPlanButton(isFresh);
+    } else {
+      updateHeaderPlanButton(false);
     }
-  } catch (_) {}
+  } catch (_) {
+    updateHeaderPlanButton(false);
+  }
 }
 
 /**
@@ -941,6 +957,7 @@ function setupPlanPreviewModal() {
   const drawerSubmitBtn = document.getElementById('planPreviewReviewSubmitBtn');
   const feedbackInput = document.getElementById('planPreviewFeedbackInput');
   const headerPlanBtn = document.getElementById('headerPlanBtn');
+  const overflowPlanBtn = document.getElementById('overflowPlanBtn');
   const historySelect = document.getElementById('planHistorySelect');
 
   historySelect?.addEventListener('change', () => {
@@ -950,6 +967,10 @@ function setupPlanPreviewModal() {
   });
 
   headerPlanBtn?.addEventListener('click', () => {
+    openPlanPreviewModal();
+  });
+
+  overflowPlanBtn?.addEventListener('click', () => {
     openPlanPreviewModal();
   });
 
@@ -3992,6 +4013,7 @@ registerServiceWorker();
 checkSslStatus();
 setupTouchGestures();
 setupPlanPreviewModal();
+updateHeaderPlanButton();
 setupWalkthroughPreviewModal();
 connectWebSocket();
 fetchAppState();
