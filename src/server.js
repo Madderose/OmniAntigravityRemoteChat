@@ -4414,12 +4414,31 @@ export async function createServer() {
                 id: actionId,
                 type: 'plan',
                 title: 'Plan Approval (Mock Test)',
-                summary: 'Mock implementation plan ready to test preview modal, review submission, and reply later.',
+                summary: 'Mock implementation plan ready to test preview modal, review submission, and dismiss.',
                 proceedText: 'Proceed with Plan',
                 reviewText: 'Review',
                 hasPreview: true,
                 planPath: plan?.path || 'implementation_plan.md',
+                planTitle: plan?.title || 'Plan d\'implémentation (Mock Test)',
+                workspaceName: plan?.workspaceName || 'Projet_Cholet',
+                targetTitle: 'Projet_Cholet - Antigravity IDE',
                 updatedAt: plan?.updatedAt || Date.now()
+            };
+        } else if (type === 'walkthrough') {
+            const wt = await findLatestWalkthrough();
+            const actionId = `wt-mock-${Date.now().toString(36)}`;
+            actedActionIds.delete(actionId);
+
+            mockAction = {
+                id: actionId,
+                type: 'walkthrough',
+                title: 'Walkthrough Available (Mock Test)',
+                summary: 'A walkthrough report is ready to review. Tap to inspect the summary and validated changes.',
+                hasPreview: true,
+                wtPath: wt?.path || 'walkthrough.md',
+                workspaceName: wt?.workspaceName || 'Projet_Cholet',
+                targetTitle: 'Projet_Cholet - Antigravity IDE',
+                updatedAt: wt?.updatedAt || Date.now()
             };
         } else if (type === 'command') {
             const actionId = `cmd-mock-${Date.now().toString(36)}`;

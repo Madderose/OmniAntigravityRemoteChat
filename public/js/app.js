@@ -1346,6 +1346,28 @@ function renderActionCard(actionData) {
         <button type="button" class="action-card-btn primary" id="actionBtnProceed">${escapeHtml(proceedText || 'Proceed with Plan')}</button>
       </div>
     `;
+  } else if (type === 'walkthrough') {
+    bodyHtml = `
+      <div class="action-plan-summary">
+        ${escapeHtml(summary || "Walkthrough summary is available. Review the details and validated changes.")}
+      </div>
+      <button type="button" class="action-plan-preview-btn" id="actionBtnPreviewWalkthrough" aria-label="Preview Walkthrough">
+        <div class="action-plan-preview-left">
+          <span class="action-plan-preview-icon">📜</span>
+          <div>
+            <div class="action-plan-preview-title">Preview Walkthrough</div>
+            <div class="action-plan-preview-sub">Tap to review report &amp; changes</div>
+          </div>
+        </div>
+        <span class="action-plan-preview-arrow">➔</span>
+      </button>
+    `;
+    footerHtml = `
+      <div class="action-card-footer" id="actionWalkthroughFooter">
+        <button type="button" class="action-card-btn secondary" id="actionBtnDismiss">Dismiss</button>
+        <button type="button" class="action-card-btn primary" id="actionBtnViewWalkthrough">View Walkthrough</button>
+      </div>
+    `;
   }
 
   const workspaceBadgeHtml = actionData.workspaceName ? `
@@ -1357,7 +1379,7 @@ function renderActionCard(actionData) {
       <div class="action-card-handle" title="Swipe down to dismiss temporarily"></div>
       <div class="action-card-header">
         <div class="action-card-title-group">
-          <span class="action-card-icon">${type === 'command' ? '⚡' : type === 'plan' ? '📋' : '❓'}</span>
+          <span class="action-card-icon">${type === 'command' ? '⚡' : type === 'plan' ? '📋' : type === 'walkthrough' ? '📜' : '❓'}</span>
           <span class="action-card-title">${escapeHtml(title || 'Decision Required')}</span>
           ${workspaceBadgeHtml}
         </div>
@@ -1569,6 +1591,29 @@ function renderActionCard(actionData) {
       await respondToInteractiveAction({
         actionId: id,
         type: 'plan',
+        decision: 'dismiss'
+      });
+      activeActionData = null;
+      slot.innerHTML = '';
+    });
+  }
+
+  // Walkthrough Preview & Dismiss
+  if (type === 'walkthrough') {
+    const previewBtn = card.querySelector('#actionBtnPreviewWalkthrough');
+    const viewBtn = card.querySelector('#actionBtnViewWalkthrough');
+    const dismissBtn = card.querySelector('#actionBtnDismiss');
+
+    previewBtn?.addEventListener('click', () => {
+      openWalkthroughPreviewModal(actionData.wtPath);
+    });
+    viewBtn?.addEventListener('click', () => {
+      openWalkthroughPreviewModal(actionData.wtPath);
+    });
+    dismissBtn?.addEventListener('click', async () => {
+      await respondToInteractiveAction({
+        actionId: id,
+        type: 'walkthrough',
         decision: 'dismiss'
       });
       activeActionData = null;
