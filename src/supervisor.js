@@ -150,8 +150,10 @@ export function detectPendingPromptFromHtml(html) {
     }
 
     // 2. Check for Implementation Plan Proceed button
-    const hasProceedBtn = /<button[^>]*>[\s\S]*?(?:proceed with plan|proceed)<\/button>/i.test(html) ||
-                          /<(?:div|span)[^>]*?(?:role=["']button["']|class=["'][^"']*?btn[^"']*?["'])[^>]*>[\s\S]*?(?:proceed with plan|proceed)<\/(?:div|span)>/i.test(html);
+    const hasProceedBtn = /class=["'][^"']*?proceed-button[^"']*?["']/i.test(html) ||
+                          /data-testid=["']proceed-button["']/i.test(html) ||
+                          /<button[^>]*>[\s\S]*?proceed[\s\S]*?<\/button>/i.test(html) ||
+                          /<(?:div|span)[^>]*?(?:role=["']button["']|class=["'][^"']*?btn[^"']*?["'])[^>]*>[\s\S]*?proceed[\s\S]*?<\/(?:div|span)>/i.test(html);
 
     if (hasProceedBtn && /plan/i.test(html)) {
         return {

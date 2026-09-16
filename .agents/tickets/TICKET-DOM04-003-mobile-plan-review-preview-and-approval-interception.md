@@ -9,7 +9,7 @@
 | **Package ID** | `PKG-04` |
 | **Date Création** | 2026-09-16 |
 | **Rapporteur (Agent)** | Antigravity Pair Programmer |
-| **Statut** | `OPEN` |
+| **Statut** | `RESOLVED` |
 | **Sévérité** | `P1 (Majeur/Bogue Fonctionnel)` |
 | **Catégorie** | `BUG` / `A11Y` |
 | **Fichier(s) Concerné(s)** | `src/server.js:2966-3040`, `src/utils/workspace.js:725-778`, `public/js/app.js:1050-1310` |
@@ -104,3 +104,4 @@ Si le bouton n'est pas trouvé dans `allBtns` (par exemple parce que le dialogue
 | Date | Agent / Développeur | Action effectuée | Statut |
 |---|---|---|---|
 | 2026-09-16 | Antigravity Pair Programmer | Création du ticket suite au retour utilisateur sur mobile | `OPEN` |
+| 2026-09-16 | Antigravity Pair Programmer | Détection hybride (DOM + artefact 30min) dans scanInteractivePrompts, fallback injectMessage dans executeActionResponse, pill #headerPlanBtn et synchronisation modale mobile implémentés et validés par tests unitaires (147 passing). | `RESOLVED` |

@@ -813,6 +813,7 @@ async function openPlanPreviewModal() {
     }
 
     currentPlanData = data;
+    updateHeaderPlanButton(true);
     const timeStr = data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently';
     const filename = data.path ? data.path.split('/').slice(-2).join('/') : 'implementation_plan.md';
     if (subtitle) {
@@ -848,6 +849,36 @@ function closePlanPreviewModal() {
 }
 
 /**
+ * Toggles the persistent header plan button shortcut.
+ * @param {boolean} [forceState]
+ */
+function updateHeaderPlanButton(forceState) {
+  const btn = document.getElementById('headerPlanBtn');
+  if (!btn) return;
+  const isPlanActive = typeof forceState === 'boolean'
+    ? forceState
+    : ((activeActionData && activeActionData.type === 'plan') ||
+       (currentPlanData && (Date.now() - (currentPlanData.updatedAt || 0) < 30 * 60 * 1000)));
+  btn.classList.toggle('hidden', !isPlanActive);
+}
+
+/**
+ * Checks if a recent implementation plan exists and updates the header shortcut button.
+ */
+async function checkPlanStatus() {
+  try {
+    const res = await fetchWithAuth('/api/plan');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.success && data.updatedAt) {
+      currentPlanData = data;
+      const isFresh = (Date.now() - data.updatedAt) < 30 * 60 * 1000;
+      updateHeaderPlanButton(isFresh);
+    }
+  } catch (_) {}
+}
+
+/**
  * Sets up global button listeners for the plan preview modal.
  */
 function setupPlanPreviewModal() {
@@ -860,6 +891,11 @@ function setupPlanPreviewModal() {
   const drawerCancelBtn = document.getElementById('planPreviewReviewCancelBtn');
   const drawerSubmitBtn = document.getElementById('planPreviewReviewSubmitBtn');
   const feedbackInput = document.getElementById('planPreviewFeedbackInput');
+  const headerPlanBtn = document.getElementById('headerPlanBtn');
+
+  headerPlanBtn?.addEventListener('click', () => {
+    openPlanPreviewModal();
+  });
 
   closeBtn?.addEventListener('click', () => {
     closePlanPreviewModal();
@@ -956,6 +992,7 @@ function renderActionCard(actionData) {
       slot.innerHTML = '';
       activeActionData = null;
     }
+    updateHeaderPlanButton();
     return;
   }
 
@@ -965,12 +1002,16 @@ function renderActionCard(actionData) {
       slot.innerHTML = '';
       activeActionData = null;
     }
+    updateHeaderPlanButton();
     return;
   }
 
   // If user snoozed this action with "Later", render the compact resume chip
   if (snoozedActionId === actionData.id) {
     activeActionData = actionData;
+    if (actionData.type === 'plan') {
+      updateHeaderPlanButton(true);
+    }
     if (!document.getElementById('planSnoozeResumeBtn')) {
       slot.innerHTML = `
         <div class="plan-snooze-chip" id="planSnoozeResumeBtn" title="Tap to resume plan approval">
@@ -992,6 +1033,9 @@ function renderActionCard(actionData) {
     return;
   }
   activeActionData = actionData;
+  if (actionData.type === 'plan') {
+    updateHeaderPlanButton(true);
+  }
 
   // Sensory haptic feedback on mobile
   if (navigator.vibrate) {
@@ -1342,6 +1386,9 @@ async function respondToInteractiveAction(payload) {
     const result = await res.json();
     if (result.success) {
       snoozedActionId = null;
+      if (payload?.type === 'plan' && payload?.decision === 'proceed') {
+        updateHeaderPlanButton(false);
+      }
       const successMsg = payload.decision === 'review'
         ? (payload.feedback ? 'Plan review submitted' : 'Plan review opened')
         : payload.decision === 'proceed'
@@ -2988,6 +3035,7 @@ function connectWebSocket() {
         snoozedActionId = null;
         closePlanPreviewModal();
         renderActionCard(null);
+        updateHeaderPlanButton(false);
         break;
       case 'cdp_status':
         handleCDPStatus(data.status, data.targetTitle);
@@ -3596,6 +3644,9 @@ loadSessionStats();
 loadQuota();
 loadTimeline();
 checkChatStatus();
+checkPlanStatus();
 setInterval(fetchAppState, 5000);
 setInterval(checkChatStatus, 10000);
+setInterval(checkPlanStatus, 15000);
+
 

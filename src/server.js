@@ -2965,9 +2965,10 @@ export async function scanInteractivePrompts(cdp) {
 
             // 3. Plan Validation (Proceed button)
             const proceedBtn = allBtns.find(btn => {
-                const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-                return text === 'proceed' || text.startsWith('proceed with plan');
-            });
+                if (btn.classList?.contains('proceed-button') || btn.getAttribute('data-testid') === 'proceed-button' || btn.matches?.('.proceed-button, [class*="proceed-button"]')) return true;
+                const text = (btn.innerText || btn.textContent || '').replace(/[\r\n↵]/g, '').trim().toLowerCase();
+                return text === 'proceed' || text.startsWith('proceed with plan') || text.includes('proceed with');
+            }) || Array.from(document.querySelectorAll('.proceed-button, [class*="proceed-button"]')).find(isVisible);
 
             if (proceedBtn) {
                 // If agent is actively running/generating (stop button visible), plan is not awaiting approval
@@ -2980,8 +2981,8 @@ export async function scanInteractivePrompts(cdp) {
                 }
 
                 const reviewBtn = allBtns.find(btn => {
-                    const text = (btn.innerText || btn.textContent || '').trim().toLowerCase();
-                    return text === 'review';
+                    const text = (btn.innerText || btn.textContent || '').replace(/[\r\n↵]/g, '').trim().toLowerCase();
+                    return text === 'review' || text.startsWith('review');
                 });
 
                 return {
@@ -2989,8 +2990,8 @@ export async function scanInteractivePrompts(cdp) {
                     type: 'plan',
                     title: 'Plan Approval',
                     summary: "Implementation plan is ready. Review details or proceed with execution.",
-                    proceedText: (proceedBtn.innerText || 'Proceed with Plan').trim(),
-                    reviewText: reviewBtn ? (reviewBtn.innerText || 'Review').trim() : 'Review',
+                    proceedText: (proceedBtn.innerText || 'Proceed with Plan').replace(/[\r\n↵]/g, '').trim() || 'Proceed with Plan',
+                    reviewText: reviewBtn ? (reviewBtn.innerText || 'Review').replace(/[\r\n↵]/g, '').trim() : 'Review',
                     hasPreview: true
                 };
             }
@@ -3039,6 +3040,32 @@ export async function scanInteractivePrompts(cdp) {
             }
         } catch (e) {}
     }
+
+    // Hybrid Fallback: If no DOM prompt was detected, check if an implementation_plan.md was recently updated (within 30 minutes)
+    // and the agent is not currently working/generating
+    try {
+        const isAgentBusy = Boolean(state.lastSnapshot?.isGenerating);
+        if (!isAgentBusy) {
+            const plan = await findLatestImplementationPlan();
+            if (plan && plan.updatedAt && (Date.now() - plan.updatedAt < 30 * 60 * 1000)) {
+                const planId = 'plan-' + Math.floor(plan.updatedAt / 1000).toString(36) + '-' + hashString(plan.content.slice(0, 100));
+                if (!actedActionIds.has(planId) && !actedActionIds.has('plan-approval')) {
+                    return {
+                        id: planId,
+                        type: 'plan',
+                        title: 'Plan Approval',
+                        summary: "Implementation plan is ready. Review details or proceed with execution.",
+                        proceedText: 'Proceed with Plan',
+                        reviewText: 'Review',
+                        hasPreview: true,
+                        planPath: plan.path,
+                        updatedAt: plan.updatedAt
+                    };
+                }
+            }
+        }
+    } catch (_) {}
+
     return null;
 }
 
@@ -3073,11 +3100,13 @@ export async function executeActionResponse(cdp, payload) {
 
             if ('${decision}' === 'proceed' || ('${type}' === 'plan' && '${decision}' !== 'review' && '${decision}' !== 'later' && '${decision}' !== 'dismiss')) {
                 const proceedBtn = allBtns.find(b => {
-                    const text = (b.innerText || b.getAttribute('aria-label') || '').trim().toLowerCase();
+                    if (b.classList?.contains('proceed-button') || b.getAttribute('data-testid') === 'proceed-button' || b.matches?.('.proceed-button, [class*="proceed-button"]')) return true;
+                    const text = (b.innerText || b.getAttribute('aria-label') || '').replace(/[\r\n↵]/g, '').trim().toLowerCase();
                     return text === 'proceed' || text.startsWith('proceed with plan') || text.includes('proceed');
-                }) || Array.from(document.querySelectorAll('button, [role="button"]')).find(b => {
-                    const t = (b.innerText || b.getAttribute('aria-label') || '').trim().toLowerCase();
-                    return t === 'proceed' || t.includes('proceed');
+                }) || Array.from(document.querySelectorAll('.proceed-button, [class*="proceed-button"], button, [role="button"]')).find(b => {
+                    if (b.classList?.contains('proceed-button') || b.getAttribute('data-testid') === 'proceed-button') return true;
+                    const t = (b.innerText || b.getAttribute('aria-label') || '').replace(/[\r\n↵]/g, '').trim().toLowerCase();
+                    return t === 'proceed' || t.startsWith('proceed with plan') || t.includes('proceed');
                 });
                 if (proceedBtn) {
                     proceedBtn.click();
@@ -3271,6 +3300,24 @@ export async function executeActionResponse(cdp, payload) {
             lastError = e.message;
         }
     }
+
+    // Fallback for Proceed: If DOM button was not found in any context, fallback to message injection
+    if (decision === 'proceed' || (type === 'plan' && decision !== 'review' && decision !== 'later' && decision !== 'dismiss')) {
+        try {
+            console.log('[executeActionResponse] Proceed button not in DOM, falling back to message injection...');
+            const injectRes = await injectMessage(cdp, 'Proceed with implementation plan');
+            if (injectRes?.success) {
+                return { success: true, executed: 'proceed_injected' };
+            }
+            if (injectRes?.error) {
+                lastError = injectRes.error;
+            }
+        } catch (err) {
+            console.warn('[executeActionResponse] Proceed fallback injection failed:', err.message);
+            lastError = err.message;
+        }
+    }
+
     return { error: lastError };
 }
 

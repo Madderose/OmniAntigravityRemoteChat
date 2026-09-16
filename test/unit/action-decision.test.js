@@ -208,4 +208,65 @@ describe('Action & Decision System - Heuristics & Prompts', () => {
       actedActionIds.delete(testPlanId);
     });
   });
+
+  describe('Hybrid Plan Detection & Fallback Execution', () => {
+    it('detects plan prompt from HTML when button has proceed-button class and child spans', () => {
+      const html = `
+        <div class="artifact-card">
+          <div>Plan: implementation_plan.md</div>
+          <button class="proceed-button inline-flex">
+            Proceed
+            <span class="text-xs">↵</span>
+          </button>
+        </div>
+      `;
+      const prompt = detectPendingPromptFromHtml(html);
+      expect(prompt).not.toBeNull();
+      expect(prompt?.type).toBe('plan');
+      expect(prompt?.proceedText).toBe('Proceed with Plan');
+    });
+
+    it('synthesizes plan prompt via hybrid fallback when DOM button is absent but recent plan file exists', async () => {
+      const { scanInteractivePrompts } = await import('../../src/server.js');
+      const mockCdp = {
+        contexts: [{ id: 1 }],
+        call: async (method, params) => {
+          if (method === 'Runtime.evaluate') {
+            return { result: { value: null } };
+          }
+          return {};
+        }
+      };
+
+      const prompt = await scanInteractivePrompts(mockCdp);
+      expect(prompt).not.toBeNull();
+      expect(prompt?.type).toBe('plan');
+      expect(prompt?.proceedText).toBe('Proceed with Plan');
+      expect(prompt?.hasPreview).toBe(true);
+      expect(prompt?.planPath).toContain('implementation_plan.md');
+    });
+
+    it('falls back to injectMessage when proceed button is not found in DOM during execution', async () => {
+      const { executeActionResponse } = await import('../../src/server.js');
+      const mockCdp = {
+        contexts: [{ id: 1 }],
+        call: async (method, params) => {
+          if (method === 'Runtime.evaluate') {
+            if (params.expression.includes('Proceed button not found')) {
+              return { result: { value: { error: 'Proceed button not found in active Antigravity window' } } };
+            }
+            return { result: { value: { success: true } } };
+          }
+          return {};
+        }
+      };
+
+      const result = await executeActionResponse(mockCdp, {
+        type: 'plan',
+        decision: 'proceed'
+      });
+      expect(result.success).toBe(true);
+      expect(result.executed).toBe('proceed_injected');
+    });
+  });
 });

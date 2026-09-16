@@ -2167,3 +2167,53 @@ body.compact-mode .action-card-btn {
   transform: translateY(-1px);
 }
 
+/* Header Plan Shortcut Pill */
+.header-plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(29, 155, 240, 0.15);
+  border: 1px solid var(--accent, #1d9bf0);
+  border-radius: var(--radius-pill, 9999px);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #1d9bf0);
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(29, 155, 240, 0.25);
+  transition: all var(--transition-fast, 0.15s ease);
+  animation: planPulseGlow 2.5s infinite ease-in-out;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.header-plan-btn:hover {
+  background: var(--accent, #1d9bf0);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(29, 155, 240, 0.45);
+}
+
+.header-plan-btn.hidden {
+  display: none !important;
+}
+
+.header-plan-btn .plan-pill-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.header-plan-btn .plan-pill-text {
+  line-height: 1;
+}
+
+@keyframes planPulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(29, 155, 240, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(29, 155, 240, 0.55);
+  }
+}
+
+
