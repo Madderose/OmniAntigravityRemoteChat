@@ -1264,7 +1264,12 @@ export async function injectMessage(cdp, text, { checkBusy = false } = {}) {
         }
 
         // Priority 3: Trigger Enter key (submits when idle, queues when agent is working)
-        if (hasText) {
+        const hasAttachments = !!(
+            document.querySelector('[data-testid*="attachment"]') ||
+            document.querySelector('[aria-label*="Remove"]') ||
+            document.querySelector('.antigravity-agent-side-panel [aria-label*="Remove"]')
+        );
+        if (hasText || hasAttachments) {
             const isCancelVisible = !!(
                 document.querySelector('[data-tooltip-id="input-send-button-cancel-tooltip"]') ||
                 document.querySelector('button[aria-label="Stop"]') ||
@@ -1379,6 +1384,150 @@ export async function injectMessageAnyTab(text, options = {}) {
                 conn.ws.close();
                 lastResult = { ...result, tab: tab.title || tab.id, method2: true };
                 if (result.ok !== false) return lastResult;
+            } catch {
+                conn.ws.close();
+            }
+        }
+    }
+    return lastResult;
+}
+
+/**
+ * Natively attach an audio recording (voice memo) into the Antigravity Preact chat panel.
+ * Uses Preact vnode traversal to locate inputBoxRef.current.setMediaAttachments and injects
+ * an inlineData MediaAttachment (audio/webm;codecs=opus) into the active conversation input.
+ *
+ * @param {import('./state.js').CDPConnection} cdp
+ * @param {{ data: string, mimeType?: string, durationSeconds?: number, name?: string }} audioData
+ * @returns {Promise<{ ok: boolean, count?: number, duration?: number, reason?: string, error?: string }>}
+ */
+export async function attachAudioNatively(cdp, { data, mimeType = 'audio/webm;codecs=opus', durationSeconds = 0, name = 'voice-memo.webm' } = {}) {
+    if (!cdp || !data) return { ok: false, reason: 'missing_cdp_or_data' };
+
+    const cleanBase64 = String(data).replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+    const safeBase64 = JSON.stringify(cleanBase64);
+    const safeMime = JSON.stringify(mimeType || 'audio/webm;codecs=opus');
+    const safeDuration = Number(durationSeconds) || 0;
+    const safeName = JSON.stringify(name || 'voice-memo.webm');
+
+    const EXPRESSION = `(async () => {
+        try {
+            const root = document.querySelector('.antigravity-agent-side-panel');
+            let inputBox = null;
+            function walk(vnode) {
+                if (!vnode || inputBox) return;
+                if (vnode.__c?.props?.inputBoxRef?.current?.setMediaAttachments) {
+                    inputBox = vnode.__c.props.inputBoxRef.current;
+                    return;
+                }
+                if (Array.isArray(vnode.__k)) vnode.__k.forEach(walk);
+            }
+            if (root && root.__k) walk(root.__k);
+
+            if (!inputBox || typeof inputBox.setMediaAttachments !== 'function') {
+                return { ok: false, error: 'input_box_ref_not_found' };
+            }
+
+            const b64 = ${safeBase64};
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) {
+                bytes[i] = bin.charCodeAt(i);
+            }
+
+            const audioMedia = {
+                mimeType: ${safeMime},
+                payload: {
+                    case: 'inlineData',
+                    value: bytes
+                },
+                durationSeconds: ${safeDuration},
+                description: ${safeName}
+            };
+
+            const existing = inputBox.getMediaAttachments ? inputBox.getMediaAttachments() : [];
+            inputBox.setMediaAttachments([...existing, audioMedia]);
+
+            // Wait for Preact re-render and attachment registration
+            for (let i = 0; i < 15; i++) {
+                await new Promise(r => setTimeout(r, 80));
+                const current = inputBox.getMediaAttachments ? inputBox.getMediaAttachments() : [];
+                if (current.length > existing.length) {
+                    return { ok: true, count: current.length, duration: ${safeDuration} };
+                }
+            }
+
+            const current = inputBox.getMediaAttachments ? inputBox.getMediaAttachments() : [];
+            return { ok: current.length > 0, count: current.length, timeout: true };
+        } catch (e) {
+            return { ok: false, error: e.message || String(e) };
+        }
+    })()`;
+
+    const evalInContext = async (contextId) => {
+        try {
+            const params = {
+                expression: EXPRESSION,
+                returnByValue: true,
+                awaitPromise: true,
+                timeout: 5000
+            };
+            if (contextId !== undefined) {
+                params.contextId = contextId;
+            }
+            const result = await cdp.call("Runtime.evaluate", params);
+            if (result.exceptionDetails) {
+                console.error(`[AttachAudio] Exception in context ${contextId ?? 'top-level'}:`, result.exceptionDetails.text, result.exceptionDetails.exception?.description);
+                return null;
+            }
+            return result.result?.value || null;
+        } catch (e) {
+            console.warn(`[AttachAudio] Evaluate failed in context ${contextId ?? 'top-level'}:`, e.message);
+            return null;
+        }
+    };
+
+    // Target the main (default) execution context first
+    const defaultCtx = cdp.contexts?.find(c => c.auxData?.isDefault) || cdp.contexts?.[0];
+    if (defaultCtx) {
+        const val = await evalInContext(defaultCtx.id);
+        if (val?.ok) return val;
+    }
+
+    // Fallback 1: evaluate without contextId (CDP uses the inspected page's main execution context)
+    const directVal = await evalInContext(undefined);
+    if (directVal?.ok) return directVal;
+
+    // Fallback 2: evaluate across remaining contexts
+    for (const ctx of (cdp.contexts || [])) {
+        if (ctx.id === defaultCtx?.id) continue;
+        const val = await evalInContext(ctx.id);
+        if (val?.ok) return val;
+    }
+
+    return { ok: false, reason: 'attach_failed_across_contexts' };
+}
+
+/**
+ * Scan all open tabs across configured CDP ports to attach audio natively into active chat.
+ *
+ * @param {{ data: string, mimeType?: string, durationSeconds?: number, name?: string }} audioData
+ * @returns {Promise<{ok: boolean, count?: number, tab?: string, error?: string, reason?: string}>}
+ */
+export async function attachAudioNativelyAnyTab(audioData) {
+    let lastResult = { ok: false, error: 'not_found_all_tabs' };
+    for (const port of PORTS) {
+        let list;
+        try { list = await getJson(`http://127.0.0.1:${port}/json/list`); } catch { continue; }
+        for (const tab of list) {
+            if (!tab.webSocketDebuggerUrl) continue;
+            let conn;
+            try { conn = await connectCDP(tab.webSocketDebuggerUrl); } catch { continue; }
+            try {
+                const result = await attachAudioNatively(conn, audioData);
+                conn.ws.close();
+                if (result.ok) return { ...result, tab: tab.title || tab.id };
+                lastResult = result;
             } catch {
                 conn.ws.close();
             }
@@ -4623,13 +4772,41 @@ export async function createServer() {
                     }
                 }
 
+                let audioAttachedNatively = false;
+                if (savedAudio) {
+                    try {
+                        let attachRes = await attachAudioNatively(cdpConnection, {
+                            data: cleanAudioData,
+                            mimeType: savedAudio.mimeType,
+                            durationSeconds: savedAudio.durationSeconds,
+                            name: savedAudio.fileName
+                        });
+                        if (!attachRes?.ok) {
+                            attachRes = await attachAudioNativelyAnyTab({
+                                data: cleanAudioData,
+                                mimeType: savedAudio.mimeType,
+                                durationSeconds: savedAudio.durationSeconds,
+                                name: savedAudio.fileName
+                            });
+                        }
+                        if (attachRes?.ok) {
+                            audioAttachedNatively = true;
+                            console.log(`[Upload-Media] Native audio attachment succeeded (count: ${attachRes.count})`);
+                        } else {
+                            console.warn(`[Upload-Media] Native audio attachment failed (${attachRes?.reason || attachRes?.error}), falling back to markdown link`);
+                        }
+                    } catch (attachErr) {
+                        console.warn("[Upload-Media] CDP audio attachment error:", attachErr.message);
+                    }
+                }
+
                 if (submit) {
                     const userPrompt = prompt ? String(prompt).trim() : '';
                     let composedPrompt = userPrompt;
                     if (savedImage && !imageAttachedNatively) {
                         composedPrompt += (composedPrompt ? '\n\n' : '') + `[Attached image: ${savedImage.fileName}](${savedImage.absolutePath})`;
                     }
-                    if (savedAudio) {
+                    if (savedAudio && !audioAttachedNatively) {
                         composedPrompt += (composedPrompt ? '\n\n' : '') + `[Voice memo: ${savedAudio.fileName}](${savedAudio.absolutePath})`;
                     }
 
@@ -4654,7 +4831,7 @@ export async function createServer() {
                         });
                     } catch {}
                 } else {
-                    injection = { ok: true, staged: true, imageAttachedNatively, audioAttachedNatively: false };
+                    injection = { ok: true, staged: true, imageAttachedNatively, audioAttachedNatively };
                 }
             }
 
@@ -4886,29 +5063,60 @@ export async function createServer() {
             console.log(`[Upload-Audio] Stored ${saved.fileName} (${saved.durationSeconds}s) at ${saved.absolutePath}`);
 
             let injection = null;
+            let audioAttachedNatively = false;
+
             if (inject) {
                 if (!cdpConnection) {
                     console.error('[Upload-Audio] CDP not connected');
                     return res.status(503).json({ error: 'CDP not connected', upload: saved });
                 }
 
-                if (submit) {
-                    const userPrompt = prompt ? String(prompt).trim() : '';
-                    const voiceLink = `[Voice memo: ${saved.fileName}](${saved.absolutePath})`;
-                    const composedPrompt = userPrompt ? `${userPrompt}\n\n${voiceLink}` : voiceLink;
+                const lockOutcome = await withSendLock(async () => {
+                    // 1. Attempt native audio attachment via Preact inputBoxRef
+                    try {
+                        let attachRes = await attachAudioNatively(cdpConnection, {
+                            data: cleanData,
+                            mimeType: saved.mimeType,
+                            durationSeconds: saved.durationSeconds,
+                            name: saved.fileName
+                        });
+                        if (!attachRes?.ok) {
+                            attachRes = await attachAudioNativelyAnyTab({
+                                data: cleanData,
+                                mimeType: saved.mimeType,
+                                durationSeconds: saved.durationSeconds,
+                                name: saved.fileName
+                            });
+                        }
+                        if (attachRes?.ok) {
+                            audioAttachedNatively = true;
+                            console.log(`[Upload-Audio] Native audio attachment succeeded (count: ${attachRes.count})`);
+                        } else {
+                            console.warn(`[Upload-Audio] Native attachment failed (${attachRes?.reason || attachRes?.error}), falling back to markdown link`);
+                        }
+                    } catch (attachErr) {
+                        console.warn('[Upload-Audio] Native audio attachment error:', attachErr.message);
+                    }
 
-                    const lockOutcome = await withSendLock(async () => {
+                    if (submit) {
+                        const userPrompt = prompt ? String(prompt).trim() : '';
+                        let composedPrompt = userPrompt;
+                        if (!audioAttachedNatively) {
+                            const voiceLink = `[Voice memo: ${saved.fileName}](${saved.absolutePath})`;
+                            composedPrompt = userPrompt ? `${userPrompt}\n\n${voiceLink}` : voiceLink;
+                        }
+
                         let res = await injectMessage(cdpConnection, composedPrompt);
                         if (!res?.ok && (res?.error === 'editor_not_found' || res?.reason === 'no_context')) {
                             console.log('[Upload-Audio] Primary target injection failed, attempting injectMessageAnyTab');
                             res = await injectMessageAnyTab(composedPrompt);
                         }
                         return res;
-                    });
-                    injection = lockOutcome.result || lockOutcome;
-                } else {
-                    injection = { ok: true, staged: true, attachedNatively: false };
-                }
+                    } else {
+                        return { ok: true, staged: true, attachedNatively: audioAttachedNatively };
+                    }
+                });
+                injection = lockOutcome.result || lockOutcome;
             }
 
             if (inject && injection && injection.ok === false) {
@@ -4927,7 +5135,7 @@ export async function createServer() {
                 injection
             };
             lastUploadResult = result;
-            console.log(`[Upload-Audio] Audio uploaded successfully: ${saved.fileName} (${saved.durationSeconds}s, submit: ${submit})`);
+            console.log(`[Upload-Audio] Audio uploaded successfully: ${saved.fileName} (${saved.durationSeconds}s, attachedNatively: ${injection?.attachedNatively}, submit: ${submit})`);
             res.json(result);
             if (inject && injection && injection.ok !== false) {
                 sessionStats.increment('uploadsInjected');
