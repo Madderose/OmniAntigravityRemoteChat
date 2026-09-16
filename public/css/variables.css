@@ -43,6 +43,7 @@
 
   --border-width: 1px;
   --border-width-strong: 1.5px;
+  --border-color: var(--border);
 
   --shadow-xs: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.12);

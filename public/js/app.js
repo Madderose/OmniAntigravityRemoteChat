@@ -533,7 +533,7 @@ function updateStatus(connected) {
   }
 }
 
-function showSlideInNotification(message, type = 'info') {
+function showSlideInNotification(message, type = 'info', duration = 4200) {
   let container = document.getElementById('notification-container');
   if (!container) {
     container = document.createElement('div');
@@ -542,19 +542,43 @@ function showSlideInNotification(message, type = 'info') {
     document.body.appendChild(container);
   }
 
+  const icon = type === 'success' ? '✓'
+    : type === 'error' ? '✕'
+    : type === 'warning' ? '!'
+    : 'ℹ';
+
   const alert = document.createElement('div');
   alert.className = `slide-in-alert ${type}`;
   alert.innerHTML = `
-    <div class="alert-message">${message}</div>
-    <button class="panel-btn" type="button">Dismiss</button>
+    <span class="alert-badge" aria-hidden="true">${icon}</span>
+    <div class="alert-message">${escapeHtml(typeof message === 'string' ? message : String(message || ''))}</div>
+    <button class="alert-dismiss-btn" type="button" aria-label="Dismiss notification">✕</button>
   `;
-  alert.querySelector('button').addEventListener('click', () => alert.remove());
+
+  let isDismissed = false;
+  const dismiss = () => {
+    if (isDismissed) return;
+    isDismissed = true;
+    alert.classList.remove('show');
+    setTimeout(() => {
+      if (alert.parentNode) alert.remove();
+    }, 240);
+  };
+
+  alert.querySelector('.alert-dismiss-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+
+  alert.addEventListener('click', () => {
+    dismiss();
+  });
+
   container.appendChild(alert);
   requestAnimationFrame(() => alert.classList.add('show'));
   setTimeout(() => {
-    alert.classList.remove('show');
-    setTimeout(() => alert.remove(), 250);
-  }, 4500);
+    dismiss();
+  }, duration);
 }
 
 let activeActionData = null;
@@ -3464,6 +3488,7 @@ if (devModeOverflowBtn) {
           { label: 'Status: Reconnecting', value: 'reconnecting' },
           { label: 'Status: Reset to Live State', value: 'reset' },
           { label: 'Mock: Plan Approval Card', value: 'mock_plan' },
+          { label: 'Mock: Walkthrough Report Card', value: 'mock_walkthrough' },
           { label: 'Mock: Command Action Card', value: 'mock_cmd' },
           { label: 'Mock: Question Action Card', value: 'mock_question' },
           { label: '⚠️ Disable Developer Mode', value: 'disable' },
@@ -3477,6 +3502,12 @@ if (devModeOverflowBtn) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'plan' }),
+            });
+          } else if (selected === 'mock_walkthrough') {
+            await fetchWithAuth('/api/action/mock', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'walkthrough' }),
             });
           } else if (selected === 'mock_cmd') {
             await fetchWithAuth('/api/action/mock', {

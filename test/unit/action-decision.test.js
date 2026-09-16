@@ -228,6 +228,13 @@ describe('Action & Decision System - Heuristics & Prompts', () => {
 
     it('synthesizes plan prompt via hybrid fallback when DOM button is absent but recent plan file exists', async () => {
       const { scanInteractivePrompts } = await import('../../src/server.js');
+      const { findLatestImplementationPlan } = await import('../../src/utils/workspace.js');
+      const fs = await import('fs');
+      const plan = await findLatestImplementationPlan();
+      if (plan?.path && fs.existsSync(plan.path)) {
+        const now = new Date();
+        fs.utimesSync(plan.path, now, now);
+      }
       const mockCdp = {
         contexts: [{ id: 1 }],
         call: async (method, params) => {

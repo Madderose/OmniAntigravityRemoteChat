@@ -3070,7 +3070,7 @@ export async function scanInteractivePrompts(cdp) {
         const isAgentBusy = Boolean(state.lastSnapshot?.isGenerating);
         if (!isAgentBusy) {
             const plan = await findLatestImplementationPlan();
-            if (plan && plan.updatedAt && (Date.now() - plan.updatedAt < 30 * 60 * 1000)) {
+            if (plan && plan.updatedAt && (Date.now() - plan.updatedAt < 2 * 60 * 60 * 1000)) {
                 const planId = 'plan-' + Math.floor(plan.updatedAt / 1000).toString(36) + '-' + hashString(plan.content.slice(0, 100));
                 if (!actedActionIds.has(planId) && !actedActionIds.has('plan-approval')) {
                     const wsName = plan.workspaceName || defaultWorkspace || 'Workspace';

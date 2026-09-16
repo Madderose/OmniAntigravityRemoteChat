@@ -535,13 +535,16 @@ textarea::placeholder {
 
 .notification-container {
   position: fixed;
-  top: 88px;
-  right: 16px;
-  z-index: 400;
+  top: calc(var(--safe-top, 0px) + 74px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
-  width: min(320px, calc(100vw - 32px));
+  align-items: center;
+  gap: 8px;
+  width: min(440px, calc(100vw - 28px));
+  pointer-events: none;
 }
 
 .ssl-banner {
@@ -560,36 +563,110 @@ textarea::placeholder {
 }
 
 .slide-in-alert {
+  pointer-events: auto;
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-xs);
-  padding: 14px;
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  border: var(--border-width) solid var(--border);
-  box-shadow: var(--shadow-soft);
-  transform: translateX(110%);
-  transition: transform var(--transition-fast);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 12px 16px;
+  border-radius: var(--radius-md, 14px);
+  background: var(--bg-secondary) !important;
+  border: var(--border-width, 1px) solid var(--border-strong, var(--border));
+  box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateY(-16px) scale(0.96);
+  transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.slide-in-alert.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.slide-in-alert .alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.slide-in-alert.success {
+  border-left: 4px solid var(--success) !important;
+}
+.slide-in-alert.success .alert-badge {
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.slide-in-alert.warning {
+  border-left: 4px solid var(--warning) !important;
+}
+.slide-in-alert.warning .alert-badge {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+
+.slide-in-alert.error {
+  border-left: 4px solid var(--error) !important;
+}
+.slide-in-alert.error .alert-badge {
+  background: var(--error-soft);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.slide-in-alert.info {
+  border-left: 4px solid var(--accent) !important;
+}
+.slide-in-alert.info .alert-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
 }
 
 .alert-message {
   flex: 1;
+  font-size: 0.94rem;
+  font-weight: 550;
+  line-height: 1.4;
+  color: var(--text-main);
+  text-align: left;
+  word-break: break-word;
 }
 
-.slide-in-alert.show {
-  transform: translateX(0);
+.alert-dismiss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  flex-shrink: 0;
 }
 
-.slide-in-alert.success {
-  border-left: 4px solid var(--success);
-}
-
-.slide-in-alert.warning {
-  border-left: 4px solid var(--warning);
-}
-
-.slide-in-alert.error {
-  border-left: 4px solid var(--error);
+.alert-dismiss-btn:hover,
+.alert-dismiss-btn:active {
+  background: var(--border);
+  color: var(--text-main);
+  transform: scale(1.08);
 }
 
 .modal-panel {
@@ -1355,12 +1432,12 @@ body.compact-mode .fab svg {
 
 .floating-action-card {
   animation: actionSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 14px);
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-lg, 16px);
   padding: 12px 14px;
   margin-bottom: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   display: flex;
