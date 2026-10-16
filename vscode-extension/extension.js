@@ -664,6 +664,7 @@ async function startServerProcess(context) {
 
   const config = vscode.workspace.getConfiguration('omniAntigravity');
   const port = config.get('serverPort') || 4747;
+  const cdpPort = config.get('cdpPort') || 7800;
   const tunnelProvider = config.get('tunnelProvider') || 'none';
   const envVars = readEnvFile();
   const globalToken = state.extensionContext?.globalState?.get('omniAntigravity.telegramBotToken') || '';
