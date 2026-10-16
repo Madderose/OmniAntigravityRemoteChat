@@ -6285,4 +6285,13 @@ async function main() {
     }
 }
 
-main();
+// Entry point guard: do not execute main when imported by tests
+const isDirectExecution = process.argv[1] && (
+    fileURLToPath(import.meta.url) === process.argv[1] ||
+    process.argv[1].endsWith('server.js') ||
+    process.argv[1].endsWith('omni-chat')
+) && !process.env.VITEST;
+
+if (isDirectExecution) {
+    main();
+}

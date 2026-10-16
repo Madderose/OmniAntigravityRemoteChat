@@ -61,8 +61,8 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
 
         it('résout correctement les chemins relatifs légitimes à l\'intérieur du workspace', () => {
             const result = resolveWorkspacePath('src/server.js');
-            expect(result.absolute).toContain('src/server.js');
-            expect(result.relativePath).toBe('src/server.js');
+            expect(result.absolute.replace(/\\/g, '/')).toContain('src/server.js');
+            expect(result.relativePath.replace(/\\/g, '/')).toBe('src/server.js');
         });
 
         it('bloque formellement les tentatives de traversée de répertoire avec ../', () => {
@@ -106,16 +106,21 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
         });
 
         it('interrompt proprement une commande active via stop()', async () => {
-            // Lancer une commande longue
-            const runPromise = terminalManager.run('sleep 30');
+            // Lancer une commande longue cross-platform
+            const cmd = process.platform === 'win32' ? 'node -e "setTimeout(()=>{}, 30000)"' : 'sleep 30';
+            const runPromise = terminalManager.run(cmd).catch(() => {});
             expect(terminalManager.getState().active).toBe(true);
 
             // Arrêter le terminal
             const stopResult = await terminalManager.stop();
             expect(stopResult.success).toBe(true);
 
-            // Vérifier que le statut n'est plus actif après arrêt
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            // Attendre la fermeture effective du processus via l'événement 'exit'
+            await new Promise((resolve) => {
+                if (!terminalManager.getState().active) return resolve(true);
+                terminalManager.once('exit', () => resolve(true));
+                setTimeout(resolve, 1000);
+            });
             expect(terminalManager.getState().active).toBe(false);
         });
     });
@@ -339,7 +344,7 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
     describe('Domaine 15 — Sonde de Préparation Profonde (/ready & /health/deep)', () => {
 
         it('renvoie un rapport de diagnostic complet avec statut 200 ou 503', async () => {
-            const { server } = await createServer();
+            const { server, wss } = await createServer();
             await new Promise((resolve) => server.listen(0, resolve));
             const port = server.address().port;
             try {
@@ -355,6 +360,7 @@ describe('Simulated E2E Workflows & System Robustness Suite', () => {
                 expect(data.storage).toBeDefined();
                 expect(typeof data.storage.diskWritable).toBe('boolean');
             } finally {
+                wss?.close();
                 server.close();
             }
         });

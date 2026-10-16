@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-16
+
+### Added
+- 🧪 **High-Readability E2E Test Suite (`test/e2e/user-journeys.e2e.test.js`)** — Implemented fluent Given/When/Then DSL client harness (`MobileJourneyClient`, `spawnTestServer`) covering 5 complete user journeys:
+  1. *Voice Journey*: Native audio recording, Opus MIME validation, zero-byte rejection, and session stats metrics.
+  2. *Navigation Journey*: Multi-window title sanitization (`cleanWindowTitle`), O(1) conversation status polling.
+  3. *Decision Journey*: Implementation plan listing (`/api/plans`) and latest active plan preview (`/api/plan`).
+  4. *Resilience Journey*: Deep health probing (`/health/deep`), remote unauthenticated 401 guard, constant-time compare.
+  5. *Zero-CDP Journey*: Zero-latency O(1) transcript reader verification.
+- 🚀 **Expanded CI Matrix** — Added `"test:e2e"` script and updated `.github/workflows/ci.yml` to automatically execute E2E user journeys on Ubuntu Node 22/24 runners.
+- 🛡️ **Repo Governance Migration** — Transferred upstream configuration and issue trackers to `Madderose/OmniAntigravityRemoteChat`.
+
+### Fixed
+- 🐛 **Vitest ESM Shebang Compatibility** (`TICKET-01`) — Added `stripShebang` plugin to `vitest.config.js` allowing unit and E2E test suites to import `src/server.js` without syntax errors.
+- 🐛 **Server Entry Point Guard** — Wrapped `main()` in `src/server.js` with an execution guard checking `!process.env.VITEST` to prevent premature port binding during test imports.
+- 🐛 **Vitest Module Isolation Deadlock** — Replaced hanging `vi.resetModules()` in `test/unit/import-fresh.js` with deterministic URL searchParam cache-busting.
+- 🐛 **Windows Path & Process Normalization** — Fixed forward/backward slash comparisons in `resolveWorkspacePath` and ensured reliable process termination with `terminalManager.once('exit')` on Windows.
+- 🧹 **Test Resource Cleanup** — Ensured `WebSocketServer` (`wss.close()`) and ephemeral HTTP servers are systematically closed in `simulated-e2e-workflows.test.js` and E2E tests to eliminate socket leaks.
+
+## [1.6.0] - 2026-09-16
+
+### Added
+- 🎙️ **Native Voice Memo Attachments** — In-browser Opus recording with live waveform widget, audio player staging, and multimodal base64 chat transmission.
+- 📑 **Multi-Conversation Horizontal Tabs** — Horizontally scrollable tab bar with per-window `localStorage` persistence (`omni_tabs_by_window_v1`).
+- 🔴 **Per-Session Unread Message Counters** — O(1) tail-inspection status endpoint (`/api/conversations/status`) with zero-reset on tab focus.
+- 🪟 **1-Tap IDE Window Switcher Badge** — Workspace title badge in header with sub-millisecond bootstrap.
+- 📋 **Implementation Plan & Walkthrough Modals** — Permanent header buttons and dedicated modals for reviewing markdown plans and triggering "Proceed" actions.
+
 ## [1.5.0] - 2026-09-15
 
 ### Added

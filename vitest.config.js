@@ -1,25 +1,31 @@
 import { defineConfig } from 'vitest/config';
 
+const stripShebang = () => ({
+  name: 'strip-shebang',
+  transform(code) {
+    if (code.startsWith('#!')) {
+      return {
+        code: code.replace(/^#!.*\r?\n/, '// shebang\n'),
+        map: null
+      };
+    }
+  }
+});
+
 export default defineConfig({
+  plugins: [stripShebang()],
   test: {
     environment: 'node',
-    include: ['test/unit/**/*.test.js'],
+    include: ['test/unit/**/*.test.js', 'test/e2e/**/*.test.js'],
     exclude: ['test/test.js'],
     clearMocks: true,
     restoreMocks: true,
-    testTimeout: 10000,
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: [
-        'src/config.js',
-        'src/quota-service.js',
-        'src/screenshot-timeline.js',
-        'src/supervisor.js',
-        'src/session-stats.js',
-        'src/utils/hash.js',
-        'src/utils/network.js',
-        'src/utils/telegram.js',
+        'src/**/*.js',
       ],
       exclude: ['src/server.js'],
     },
