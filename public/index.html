@@ -164,7 +164,7 @@
                     <span class="overflow-version-icon">🏷️</span>
                     <span class="overflow-version-label">Version</span>
                   </div>
-                  <span class="overflow-version-tag" id="appVersionBadge">v1.6.0</span>
+                  <span class="overflow-version-tag" id="appVersionBadge">v1.7.0</span>
                 </div>
               </div>
             </div>
@@ -356,6 +356,15 @@
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal-panel">
         <div class="modal-title" id="modalTitle">Select</div>
+        <div class="modal-effort-bar" id="modalEffortBar" hidden>
+          <span class="modal-effort-label">Thinking Effort</span>
+          <div class="modal-effort-pills" id="modalEffortPills">
+            <button class="modal-effort-pill" data-effort="low" type="button">Low</button>
+            <button class="modal-effort-pill" data-effort="medium" type="button">Medium</button>
+            <button class="modal-effort-pill active" data-effort="high" type="button">High</button>
+            <button class="modal-effort-pill" data-effort="max" type="button">Max</button>
+          </div>
+        </div>
         <div id="modalList"></div>
         <div class="screen-actions modal-actions">
           <button class="panel-btn" id="modalCancelBtn">Close</button>
@@ -489,6 +498,6 @@
       defer
       src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"
     ></script>
-    <script type="module" src="/js/app.js?v=1.6.0"></script>
+    <script type="module" src="/js/app.js?v=1.7.0"></script>
   </body>
 </html>

@@ -62,6 +62,8 @@ const sessionStatsText = document.getElementById('sessionStatsText');
 const quickActions = document.getElementById('quickActions');
 const modalOverlay = document.getElementById('modalOverlay');
 const modalTitle = document.getElementById('modalTitle');
+const modalEffortBar = document.getElementById('modalEffortBar');
+const modalEffortPills = document.getElementById('modalEffortPills');
 const modalList = document.getElementById('modalList');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const historyLayer = document.getElementById('historyLayer');
@@ -2542,7 +2544,8 @@ async function fetchAppState() {
       modeBtn.classList.toggle('active', payload.mode === 'Planning');
     }
     if (payload.model && payload.model !== 'Unknown') {
-      modelText.textContent = payload.model;
+      state.currentModel = payload.model;
+      renderModelText(payload.model);
     }
     if (payload.windowTitle) {
       handleWindowStateUpdate(payload.windowTitle, payload.activeTargetId, payload.targets);
@@ -2923,9 +2926,58 @@ async function selectChat(title, chatId, workspace) {
   }
 }
 
+let currentEffort = localStorage.getItem('omni_thinking_effort') || 'high';
+
+function updateModalEffortPills() {
+  if (!modalEffortPills) return;
+  const pills = modalEffortPills.querySelectorAll('.modal-effort-pill');
+  pills.forEach((p) => {
+    p.classList.toggle('active', p.getAttribute('data-effort') === currentEffort);
+  });
+}
+
+function renderModelText(modelName, effort = currentEffort) {
+  if (!modelText) return;
+  const raw = modelName || modelText.textContent || 'Claude 3.7';
+  const cleanName = raw.replace(/\s*\(?(Low|Medium|High|Max)\)?/gi, '').replace(/\s*·\s*(Low|Medium|High|Max)/gi, '').trim();
+  const effortStr = effort ? ` · ${effort.charAt(0).toUpperCase() + effort.slice(1)}` : '';
+  modelText.textContent = `${cleanName || 'Model'}${effortStr}`;
+}
+
+function setThinkingEffort(effort) {
+  if (!['low', 'medium', 'high', 'max'].includes(effort)) return;
+  currentEffort = effort;
+  localStorage.setItem('omni_thinking_effort', effort);
+  updateModalEffortPills();
+  renderModelText(state.currentModel || modelText.textContent);
+}
+
+modalEffortPills?.addEventListener('click', (e) => {
+  const target = /** @type {HTMLElement} */ (e.target);
+  const btn = target.closest('.modal-effort-pill');
+  if (!btn) return;
+  const effort = btn.getAttribute('data-effort');
+  if (effort) {
+    setThinkingEffort(effort);
+    fetchWithAuth('/api/agy/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: state.currentModel || 'gemini-4-argon-high', effort })
+    }).catch(() => {});
+  }
+});
+
 function openModal(title, options, onSelect, activeValue = null) {
   modalTitle.textContent = title;
   modalList.innerHTML = '';
+  if (modalEffortBar) {
+    if (title === 'Select Model') {
+      modalEffortBar.hidden = false;
+      updateModalEffortPills();
+    } else {
+      modalEffortBar.hidden = true;
+    }
+  }
   options.forEach((option) => {
     const button = document.createElement('button');
     const isActive = activeValue !== null ? option.value === activeValue : Boolean(option.active);
@@ -2957,6 +3009,7 @@ function openModal(title, options, onSelect, activeValue = null) {
 
 function closeModal() {
   modalOverlay.classList.remove('show');
+  if (modalEffortBar) modalEffortBar.hidden = true;
 }
 
 async function showTargetSelector() {
@@ -2967,6 +3020,7 @@ async function showTargetSelector() {
     const activeTargetId = payload.activeTarget;
 
     modalTitle.textContent = 'Antigravity Windows';
+    if (modalEffortBar) modalEffortBar.hidden = true;
     modalList.innerHTML = '';
 
     if (targets.length === 0) {
@@ -3831,13 +3885,18 @@ modelBtn.addEventListener('click', async () => {
       const response = await fetchWithAuth('/set-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: value }),
+        body: JSON.stringify({ model: value, effort: currentEffort }),
       });
+      fetchWithAuth('/api/agy/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: value, effort: currentEffort }),
+      }).catch(() => {});
       const payload = await response.json();
       if (payload.success) {
         state.currentModel = value;
-        modelText.textContent = value;
-        showSlideInNotification(`Model set to ${value}`, 'success');
+        renderModelText(value, currentEffort);
+        showSlideInNotification(`Model set to ${value} (${currentEffort})`, 'success');
       }
     },
     currentActive

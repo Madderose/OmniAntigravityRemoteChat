@@ -48,3 +48,11 @@ registry/
 docs/REDDIT_*
 docs/LAUNCH_*
 docs/PRD_*
+
+# Test Coverage
+coverage/
+
+# VS Code Extension Artifacts
+vscode-extension/node_modules/
+vscode-extension/server/
+vscode-extension/*.vsix

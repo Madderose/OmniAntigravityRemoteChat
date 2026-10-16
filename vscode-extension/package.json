@@ -1,0 +1,177 @@
+{
+  "name": "omni-antigravity-remote",
+  "displayName": "OmniAntigravity Remote Chat",
+  "description": "Your mobile AI cockpit for Antigravity IDE — Tailscale-first WireGuard mesh & Local Wi-Fi companion with real-time CDP mirroring, QR pairing, voice dictation, and Antigravity 2.0 diff approvals.",
+  "version": "2.0.0",
+  "publisher": "madderose",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Madderose/OmniAntigravityRemoteChat"
+  },
+  "categories": [
+    "AI",
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "antigravity",
+    "tailscale",
+    "wireguard",
+    "mobile",
+    "remote",
+    "chat",
+    "cdp",
+    "companion",
+    "qr-code"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "omniAntigravity.showDashboard",
+        "title": "Open Remote Control Dashboard",
+        "category": "OmniAntigravity",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "omniAntigravity.startServer",
+        "title": "Start Server",
+        "category": "OmniAntigravity",
+        "icon": "$(play)"
+      },
+      {
+        "command": "omniAntigravity.stopServer",
+        "title": "Stop Server",
+        "category": "OmniAntigravity",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "omniAntigravity.restartServer",
+        "title": "Restart Server",
+        "category": "OmniAntigravity",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "omniAntigravity.openWeb",
+        "title": "Open in Browser",
+        "category": "OmniAntigravity",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "omniAntigravity.copyLocalUrl",
+        "title": "Copy Local Wi-Fi URL",
+        "category": "OmniAntigravity",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "omniAntigravity.copyTunnelUrl",
+        "title": "Copy Public Tunnel URL",
+        "category": "OmniAntigravity",
+        "icon": "$(link)"
+      },
+      {
+        "command": "omniAntigravity.enableCdpInArgv",
+        "title": "Enable Remote Debugging Port (7800) in argv.json",
+        "category": "OmniAntigravity",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "omniAntigravity.copyTailscaleUrl",
+        "title": "Copy Tailscale Remote URL",
+        "category": "OmniAntigravity",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "omniAntigravity.enableTailscaleServe",
+        "title": "Enable Tailscale HTTPS Serve",
+        "category": "OmniAntigravity",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "omniAntigravity.launchDebugWindow",
+        "title": "Launch Antigravity Window with Debug Port",
+        "category": "OmniAntigravity",
+        "icon": "$(window)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "omniAntigravity",
+          "title": "Omni Remote",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "omniAntigravity": [
+        {
+          "type": "webview",
+          "id": "omniAntigravity.sidebarView",
+          "name": "Mobile Companion"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OmniAntigravity Remote Chat",
+      "properties": {
+        "omniAntigravity.serverPort": {
+          "type": "number",
+          "default": 4747,
+          "description": "HTTP port for the OmniAntigravity Remote Chat server."
+        },
+        "omniAntigravity.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically start the OmniAntigravity Remote server when Antigravity IDE launches."
+        },
+        "omniAntigravity.tunnelProvider": {
+          "type": "string",
+          "enum": [
+            "none",
+            "cloudflare",
+            "pinggy",
+            "ngrok"
+          ],
+          "default": "none",
+          "description": "Tunnel provider for remote access over cellular/internet."
+        },
+        "omniAntigravity.cdpPort": {
+          "type": "number",
+          "default": 7800,
+          "description": "Chrome DevTools Protocol (CDP) port for Antigravity IDE workbench."
+        },
+        "omniAntigravity.password": {
+          "type": "string",
+          "default": "",
+          "description": "Custom authentication password for the mobile web interface (defaults to APP_PASSWORD from .env, or 'antigravity')."
+        },
+        "omniAntigravity.telegramBotToken": {
+          "type": "string",
+          "default": "",
+          "description": "Telegram Bot Token from @BotFather for push alerts and interactive remote approvals (/status, /approve, /reject)."
+        },
+        "omniAntigravity.telegramChatId": {
+          "type": "string",
+          "default": "",
+          "description": "Your Telegram Chat ID (obtain from @userinfobot or @RawDataBot) to receive mobile notifications."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "compression": "^1.8.1",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.3.1",
+    "express": "^4.22.1",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.0"
+  }
+}

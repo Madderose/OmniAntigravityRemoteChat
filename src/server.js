@@ -78,6 +78,7 @@ import {
 } from './supervisor.js';
 import { CloudflareTunnelManager } from '../scripts/cloudflare-tunnel.js';
 import { PinggyTunnelManager } from '../scripts/pinggy-tunnel.js';
+import { mountExecutionAndTranscriptRoutes } from './services/api-router.js';
 
 // ─── Mutable State ──────────────────────────────────────────────────
 
@@ -4614,6 +4615,8 @@ export async function createServer() {
         sessionStats.logAction('assist_history_cleared');
         res.json({ success: true, messages: [] });
     });
+
+    mountExecutionAndTranscriptRoutes(app, { broadcast });
 
     app.post('/api/assist/chat', async (req, res) => {
         const message = String(req.body?.message || '').trim();

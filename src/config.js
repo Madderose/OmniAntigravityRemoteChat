@@ -8,6 +8,7 @@
 
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -65,6 +66,25 @@ function readPositiveIntEnv(name, fallback) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// ─── Zero-CDP Transcript & Headless agy CLI ─────────────────────────
+
+export const USER_HOME = os.homedir() || process.env.USERPROFILE || process.env.HOME || '';
+export const TRANSCRIPT_BRAIN_DIRS = process.env.TRANSCRIPT_BRAIN_DIR
+    ? [process.env.TRANSCRIPT_BRAIN_DIR]
+    : [
+        join(USER_HOME, '.gemini', 'antigravity-ide', 'brain'),
+        join(USER_HOME, '.gemini', 'antigravity-cli', 'brain')
+    ];
+export const TRANSCRIPT_POLL_MS = readPositiveIntEnv('TRANSCRIPT_POLL_MS', 400);
+
+const defaultLocalAppData = process.env.LOCALAPPDATA || (USER_HOME ? join(USER_HOME, 'AppData', 'Local') : '');
+export const AGY_CLI_PATH = process.env.AGY_CLI_PATH || (
+    process.platform === 'win32' && defaultLocalAppData
+        ? join(defaultLocalAppData, 'agy', 'bin', 'agy.exe')
+        : 'agy'
+);
+export const DEFAULT_AGY_MODEL = process.env.AGY_DEFAULT_MODEL || 'gemini-4-argon-medium';
+
 // ─── Supervisor ────────────────────────────────────────────────────
 
 export function getSupervisorSuggestMode() {
@@ -105,6 +125,213 @@ export function getDevMocksEnabled() {
     return readBooleanEnv('ENABLE_DEV_MOCKS', process.env.NODE_ENV !== 'production');
 }
 
+// ─── Antigravity 2.0 Models & Reasoning Effort ─────────────────────
+
+/** @type {readonly ('low' | 'medium' | 'high' | 'max')[]} */
+export const REASONING_EFFORTS = ['low', 'medium', 'high', 'max'];
+
+export const DEFAULT_REASONING_EFFORT = 'high';
+
+/**
+ * @typedef {object} ModelMetadata
+ * @property {string} id
+ * @property {string} label
+ * @property {string} family
+ * @property {'google' | 'anthropic' | 'openai'} provider
+ * @property {'low' | 'medium' | 'high' | 'max'} defaultEffort
+ * @property {boolean} supportsEffort
+ * @property {boolean} supportsThinking
+ * @property {boolean} supportsImages
+ * @property {number} contextWindow
+ */
+
+/** @type {readonly ModelMetadata[]} */
+export const ANTIGRAVITY_MODELS = [
+    {
+        id: 'gemini-4-argon-high',
+        label: 'Gemini 4 Argon (High)',
+        family: 'gemini-4-argon',
+        provider: 'google',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 2000000
+    },
+    {
+        id: 'gemini-4-argon-medium',
+        label: 'Gemini 4 Argon (Medium)',
+        family: 'gemini-4-argon',
+        provider: 'google',
+        defaultEffort: 'medium',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 2000000
+    },
+    {
+        id: 'gemini-3.8-flash-high',
+        label: 'Gemini 3.8 Flash (High)',
+        family: 'gemini-3.8-flash',
+        provider: 'google',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 1000000
+    },
+    {
+        id: 'claude-opus-5-5-high',
+        label: 'Claude Opus 5.5 (High)',
+        family: 'claude-5.5',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 500000
+    },
+    {
+        id: 'claude-sonnet-5-5-high',
+        label: 'Claude Sonnet 5.5 (High)',
+        family: 'claude-5.5',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 500000
+    },
+    {
+        id: 'claude-5-5-sonnet',
+        label: 'Claude 5.5 Sonnet (Thinking)',
+        family: 'claude-5.5',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 500000
+    },
+    {
+        id: 'claude-5-5-opus',
+        label: 'Claude 5.5 Opus (Thinking)',
+        family: 'claude-5.5',
+        provider: 'anthropic',
+        defaultEffort: 'max',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 500000
+    },
+    {
+        id: 'claude-3-7-sonnet-thinking',
+        label: 'Claude 3.7 Sonnet (Thinking)',
+        family: 'claude-3.7',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 200000
+    },
+    {
+        id: 'claude-sonnet-4-6-thinking',
+        label: 'Claude Sonnet 4.6 (Thinking)',
+        family: 'claude-4.6',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 200000
+    },
+    {
+        id: 'claude-opus-4-6-thinking',
+        label: 'Claude Opus 4.6 (Thinking)',
+        family: 'claude-4.6',
+        provider: 'anthropic',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 200000
+    },
+    {
+        id: 'gemini-3-1-pro-high',
+        label: 'Gemini 3.1 Pro (High)',
+        family: 'gemini-3.1',
+        provider: 'google',
+        defaultEffort: 'high',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: true,
+        contextWindow: 2000000
+    },
+    {
+        id: 'gemini-3-1-pro-low',
+        label: 'Gemini 3.1 Pro (Low)',
+        family: 'gemini-3.1',
+        provider: 'google',
+        defaultEffort: 'low',
+        supportsEffort: true,
+        supportsThinking: false,
+        supportsImages: true,
+        contextWindow: 2000000
+    },
+    {
+        id: 'gemini-3-flash',
+        label: 'Gemini 3 Flash',
+        family: 'gemini-3',
+        provider: 'google',
+        defaultEffort: 'low',
+        supportsEffort: false,
+        supportsThinking: false,
+        supportsImages: true,
+        contextWindow: 1000000
+    },
+    {
+        id: 'gpt-oss-120b-medium',
+        label: 'GPT-OSS 120B (Medium)',
+        family: 'gpt-oss',
+        provider: 'openai',
+        defaultEffort: 'medium',
+        supportsEffort: true,
+        supportsThinking: true,
+        supportsImages: false,
+        contextWindow: 128000
+    }
+];
+
+/** @type {Record<string, ModelMetadata>} */
+export const MODEL_METADATA = Object.fromEntries(
+    ANTIGRAVITY_MODELS.map((model) => [model.id, model])
+);
+
+/**
+ * Look up model metadata by ID or human-readable label.
+ * @param {string} idOrLabel
+ * @returns {ModelMetadata | null}
+ */
+export function getModelMetadata(idOrLabel) {
+    const key = String(idOrLabel || '').trim().toLowerCase();
+    if (!key) return null;
+    return (
+        ANTIGRAVITY_MODELS.find(
+            (m) => m.id.toLowerCase() === key || m.label.toLowerCase() === key
+        ) || null
+    );
+}
+
+/**
+ * Validate reasoning effort level.
+ * @param {string} effort
+ * @returns {effort is 'low' | 'medium' | 'high' | 'max'}
+ */
+export function isValidReasoningEffort(effort) {
+    return REASONING_EFFORTS.includes(/** @type {any} */ (String(effort || '').trim().toLowerCase()));
+}
+
 // ─── Version ────────────────────────────────────────────────────────
 
-export const VERSION = '1.6.1';
+export const VERSION = '1.7.0';

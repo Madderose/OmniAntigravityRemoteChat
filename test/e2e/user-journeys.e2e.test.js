@@ -4,6 +4,7 @@ import { spawnTestServer, MobileJourneyClient } from './harness/journey-client.j
 import { cleanWindowTitle, getConversationStatus, pruneUploadsDirectory } from '../../src/utils/workspace.js';
 import { safeTimingCompare } from '../../src/server.js';
 import { sessionStats } from '../../src/session-stats.js';
+import { transcriptWatcherService } from '../../src/services/transcript-watcher-service.js';
 
 describe('Suite E2E Haute Lisibilité — Parcours Utilisateurs OmniAntigravity v2.0', () => {
   /** @type {import('./harness/journey-client.js').TestServerContext} */
@@ -170,6 +171,46 @@ describe('Suite E2E Haute Lisibilité — Parcours Utilisateurs OmniAntigravity 
 
       // Then : Pour un ID inexistant, retourne null sans lever d'erreur
       expect(status).toBeNull();
+    });
+
+    it('interroge la liste des conversations Zero-CDP et le catalogue de modèles agy via REST', async () => {
+      // When : Le client mobile consulte la liste des conversations disponibles
+      await client.get('/api/conversations');
+      expect(client.lastResponse?.status).toBe(200);
+      expect(Array.isArray(client.lastJson?.conversations)).toBe(true);
+
+      // And : Le client mobile consulte le catalogue de modèles
+      await client.get('/api/agy/models');
+      expect(client.lastResponse?.status).toBe(200);
+      expect(Array.isArray(client.lastJson?.models)).toBe(true);
+      expect(client.lastJson?.models.length).toBeGreaterThan(0);
+      expect(client.lastJson?.currentModel).toBeDefined();
+    });
+
+    it('diffuse les événements de transcript en streaming temps réel sur le WebSocket mobile', async () => {
+      // Given : Un client connecté au WebSocket
+      await client.connectWebSocket();
+      client.wsMessages = [];
+
+      // When : Le service TranscriptWatcher émet une nouvelle étape
+      const mockStep = {
+        step_index: 99,
+        source: 'MODEL',
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        content: 'Streaming step from zero-CDP watcher'
+      };
+      transcriptWatcherService.emit('step', mockStep, 'conv-e2e-live');
+
+      // Attente d'un court délai pour propagation WebSocket
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Then : Le client a reçu la trame transcript_step en direct
+      const stepMsg = client.wsMessages.find(
+        (m) => m?.type === 'transcript_step' && m?.conversationId === 'conv-e2e-live'
+      );
+      expect(stepMsg).toBeDefined();
+      expect(stepMsg.step.content).toBe('Streaming step from zero-CDP watcher');
     });
   });
 });

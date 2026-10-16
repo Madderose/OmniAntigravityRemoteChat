@@ -13,3 +13,4 @@ certs
 .gitignore
 .npmrc
 assets
+vscode-extension

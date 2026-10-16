@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-16
+
+### Added
+- 🚀 **Zero-CDP Autonomous Transcript Watcher (`src/services/transcript-watcher-service.js`)** (`TICKET-03`) —
+  - High-performance $O(1)$ byte-offset tailing (`fs.open`/`fs.read`) across IDE and CLI brain directories without full file rescans.
+  - Multi-directory discovery (`discoverConversations`/`listConversations`) with automatic sorting by `mtimeMs` descending.
+  - Automatic resolution of truncated JSONL records from sibling `transcript_full.jsonl`.
+  - Resilience against partial line writes (chunk boundary buffering) and corrupted lines without throwing.
+  - Lifecycle event emissions (`step`, `action_required`, `task_completed`, `steps:reset`, `conversation:changed`).
+  - Unit test suite (`test/unit/transcript-watcher-service.test.js`) with 16 tests and >95% line coverage.
+- ⚙️ **Formal `ExecutionEngine` Contract & `AgyBridgeService` (`src/services/agy-bridge-service.js`)** (`TICKET-04`) —
+  - SOLID Open/Closed Principle base class `ExecutionEngine` for interchangeable AI execution backends.
+  - Direct headless `agy` CLI bridge spawning with array arguments (`shell: false`) to prevent command injection.
+  - Clean process tree termination on Windows (`taskkill /pid <PID> /T /F`) and POSIX (`SIGTERM`/`SIGKILL`).
+  - Streaming NDJSON chunk parser emitting `agy:json`, `agy:text`, `chunk`, and `action_required`.
+  - Unit test suite (`test/unit/agy-bridge-service.test.js`) with 11 tests and >90% line coverage.
+- 🔌 **Modular API Router (`src/services/api-router.js`)** —
+  - Encapsulated REST endpoints (`/api/conversations`, `/api/conversations/:id/steps`, `/api/conversations/select`, `/api/agy/status`, `/api/agy/models`, `/api/agy/model`, `/api/agy/send`, `/api/agy/stop`).
+  - WebSocket streaming bridge relaying real-time transcript steps and CLI chunks to mobile clients.
+  - **Strict SRP Compliance**: Mounted in `src/server.js` with only **3 added lines**, staying well below the 30-line ceiling rule.
+  - Unit test suite (`test/unit/api-router.test.js`) with 7 tests.
+- 📱 **Progressive Disclosure UI & Thinking Effort Selector** (`TICKET-05`) —
+  - Integrated 4-tier thinking effort selector (`Low` | `Medium` | `High` | `Max`) directly inside `#modalOverlay` header when selecting models.
+  - Zero pollution in `.settings-bar`: preserved clean mobile layout on 375px viewports.
+  - Compact model status display (`Gemini 4 Argon · High`).
+  - Preserved unified single mic button (`#voiceMemoBtn`) for native voice memos.
+- 📦 **VS Code Cockpit Decoupling** (`TICKET-06`) —
+  - Isolated VS Code extension in `vscode-extension/` with its own `package.json` (v2.0.0).
+  - Added build artifact ignore rules in `.gitignore` and `.dockerignore`.
+- 🧪 **E2E Scenario 5 Verification (`test/e2e/user-journeys.e2e.test.js`)** —
+  - Added end-to-end tests for Zero-CDP REST endpoints, model catalog inspection, and real-time WebSocket transcript streaming.
+  - Total test suite expanded to 23 test files (211 passed).
+
 ## [1.6.1] - 2026-10-16
 
 ### Added
