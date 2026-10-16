@@ -45,6 +45,11 @@
   --border-width-strong: 1.5px;
   --border-color: var(--border);
 
+  --primary: var(--accent);
+  --primary-glow: var(--accent-soft);
+  --primary-subtle: var(--accent-soft);
+  --accent-contrast: #ffffff;
+
   --shadow-xs: 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.12);
   --shadow-md: 0 16px 40px rgba(15, 23, 42, 0.16);
