@@ -2,7 +2,7 @@
   "name": "omni-antigravity-remote",
   "displayName": "OmniAntigravity Remote Chat",
   "description": "Your mobile AI cockpit for Antigravity IDE — Tailscale-first WireGuard mesh & Local Wi-Fi companion with real-time CDP mirroring, QR pairing, voice dictation, and Antigravity 2.0 diff approvals.",
-  "version": "2.0.0",
+  "version": "1.7.0",
   "publisher": "madderose",
   "icon": "media/icon.png",
   "engines": {
