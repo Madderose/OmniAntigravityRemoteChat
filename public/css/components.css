@@ -704,6 +704,10 @@ textarea::placeholder {
   border: var(--border-width) solid var(--border);
 }
 
+.modal-effort-bar[hidden] {
+  display: none !important;
+}
+
 .modal-effort-label {
   font-size: 11px;
   font-weight: 600;

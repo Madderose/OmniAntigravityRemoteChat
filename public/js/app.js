@@ -2973,9 +2973,11 @@ function openModal(title, options, onSelect, activeValue = null) {
   if (modalEffortBar) {
     if (title === 'Select Model') {
       modalEffortBar.hidden = false;
+      modalEffortBar.style.display = 'flex';
       updateModalEffortPills();
     } else {
       modalEffortBar.hidden = true;
+      modalEffortBar.style.display = 'none';
     }
   }
   options.forEach((option) => {
@@ -3009,7 +3011,10 @@ function openModal(title, options, onSelect, activeValue = null) {
 
 function closeModal() {
   modalOverlay.classList.remove('show');
-  if (modalEffortBar) modalEffortBar.hidden = true;
+  if (modalEffortBar) {
+    modalEffortBar.hidden = true;
+    modalEffortBar.style.display = 'none';
+  }
 }
 
 async function showTargetSelector() {
@@ -3020,7 +3025,10 @@ async function showTargetSelector() {
     const activeTargetId = payload.activeTarget;
 
     modalTitle.textContent = 'Antigravity Windows';
-    if (modalEffortBar) modalEffortBar.hidden = true;
+    if (modalEffortBar) {
+      modalEffortBar.hidden = true;
+      modalEffortBar.style.display = 'none';
+    }
     modalList.innerHTML = '';
 
     if (targets.length === 0) {
