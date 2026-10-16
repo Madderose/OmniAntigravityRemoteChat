@@ -182,6 +182,13 @@ describe('Action & Decision System - Heuristics & Prompts', () => {
   describe('Implementation Plan File Resolution', () => {
     it('discovers and loads the active implementation plan', async () => {
       const { findLatestImplementationPlan } = await import('../../src/utils/workspace.js');
+      const fs = await import('fs');
+      const path = await import('path');
+      const docsPlan = path.join(process.cwd(), 'docs', 'implementation_plan.md');
+      if (!fs.existsSync(docsPlan)) {
+        await fs.promises.mkdir(path.dirname(docsPlan), { recursive: true });
+        await fs.promises.writeFile(docsPlan, '# Implementation Plan\n\nActive plan content.', 'utf-8');
+      }
       const plan = await findLatestImplementationPlan();
       // Should find the implementation plan created for the current conversation
       expect(plan).not.toBeNull();
@@ -230,6 +237,12 @@ describe('Action & Decision System - Heuristics & Prompts', () => {
       const { scanInteractivePrompts } = await import('../../src/server.js');
       const { findLatestImplementationPlan } = await import('../../src/utils/workspace.js');
       const fs = await import('fs');
+      const path = await import('path');
+      const docsPlan = path.join(process.cwd(), 'docs', 'implementation_plan.md');
+      if (!fs.existsSync(docsPlan)) {
+        await fs.promises.mkdir(path.dirname(docsPlan), { recursive: true });
+        await fs.promises.writeFile(docsPlan, '# Implementation Plan\n\nActive plan content.', 'utf-8');
+      }
       const plan = await findLatestImplementationPlan();
       if (plan?.path && fs.existsSync(plan.path)) {
         const now = new Date();
