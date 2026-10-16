@@ -28,6 +28,7 @@ const USER_SCROLL_LOCK_DURATION = 15000;
 const SCROLL_SYNC_DEBOUNCE = 150;
 
 const chatContainer = document.getElementById('chatContainer');
+const chatLayout = document.querySelector('.chat-layout');
 const chatContent = document.getElementById('chatContent');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -2165,20 +2166,11 @@ async function showSuggestionsQueue() {
 }
 
 function buildSnapshotStyles(cssText) {
-  const theme = getComputedStyle(document.documentElement);
-  const text = theme.getPropertyValue('--text-main').trim();
-  const border = theme.getPropertyValue('--snapshot-border').trim();
-  const codeBg = theme.getPropertyValue('--snapshot-code-bg').trim();
-  const surface = theme.getPropertyValue('--snapshot-bg').trim();
-  const card = theme.getPropertyValue('--snapshot-card').trim();
-  const link = theme.getPropertyValue('--snapshot-link').trim();
-  const accent = theme.getPropertyValue('--accent').trim() || '#1d9bf0';
-  const accentSoft = theme.getPropertyValue('--accent-soft').trim() || 'rgba(29, 155, 240, 0.16)';
   return `
     ${cssText}
     #conversation, #chat, #cascade {
       background: transparent !important;
-      color: ${text} !important;
+      color: var(--text-main) !important;
       font-family: var(--font-sans) !important;
       height: auto !important;
       max-width: 100% !important;
@@ -2187,8 +2179,8 @@ function buildSnapshotStyles(cssText) {
     }
     #conversation > div, #chat > div, #cascade > div,
     #conversation [class*="overflow"], #chat [class*="overflow"], #cascade [class*="overflow"],
-    [aria-label="Message history"],
-    [tabindex="0"] {
+    #chatContent [aria-label="Message history"],
+    #chatContent [tabindex="0"] {
       height: auto !important;
       min-height: 0 !important;
       max-height: none !important;
@@ -2196,12 +2188,12 @@ function buildSnapshotStyles(cssText) {
       flex: none !important;
       display: block !important;
     }
-    [style*="container-type"] {
+    #chatContent [style*="container-type"] {
       container-type: normal !important;
       height: auto !important;
       min-height: auto !important;
     }
-    [role="article"][aria-label="User message"] {
+    #chatContent [role="article"][aria-label="User message"] {
       position: relative !important;
       background: var(--snapshot-card, #141b2d) !important;
       border: 1px solid var(--snapshot-border, #232d46) !important;
@@ -2209,78 +2201,78 @@ function buildSnapshotStyles(cssText) {
       padding: 12px 14px !important;
       margin: 12px 0 !important;
     }
-    [role="article"][aria-label="User message"]::after {
+    #chatContent [role="article"][aria-label="User message"]::after {
       display: none !important;
     }
     #conversation *, #chat *, #cascade * {
       color: inherit !important;
       max-width: 100% !important;
     }
-    #conversation a, #chat a, #cascade a {
-      color: ${link} !important;
+    #conversation a, #chat a, #cascade a, #chatContent a {
+      color: var(--snapshot-link, var(--accent)) !important;
     }
-    pre, code, .monaco-editor-background, [class*="terminal"] {
-      background: ${codeBg} !important;
-      border: 1px solid ${border} !important;
-      color: ${text} !important;
+    #chatContent pre, #chatContent code, #chatContent .monaco-editor-background, #chatContent [class*="terminal"] {
+      background: var(--snapshot-code-bg, #020617) !important;
+      border: 1px solid var(--snapshot-border, rgba(148, 163, 184, 0.22)) !important;
+      color: var(--text-main) !important;
       font-family: var(--font-mono) !important;
       border-radius: 12px !important;
     }
-    pre {
+    #chatContent pre {
       white-space: pre-wrap !important;
       padding: 14px !important;
       margin: 12px 0 !important;
       overflow: auto !important;
     }
-    :not(pre) > code {
+    #chatContent :not(pre) > code {
       padding: 2px 6px !important;
       border-radius: 8px !important;
-      background: ${card} !important;
-      border: 1px solid ${border} !important;
+      background: var(--snapshot-card, var(--bg-card)) !important;
+      border: 1px solid var(--snapshot-border, rgba(148, 163, 184, 0.22)) !important;
     }
-    details {
-      background: ${surface} !important;
-      border: 1px solid ${border} !important;
+    #chatContent details {
+      background: var(--snapshot-bg, var(--bg-primary)) !important;
+      border: 1px solid var(--snapshot-border, rgba(148, 163, 184, 0.22)) !important;
       border-radius: 12px !important;
       margin: 10px 0 !important;
       overflow: hidden !important;
     }
-    details > summary {
-      background: ${card} !important;
+    #chatContent details > summary {
+      background: var(--snapshot-card, var(--bg-card)) !important;
       padding: 10px 12px !important;
       cursor: pointer !important;
     }
-    blockquote,
-    table,
-    th,
-    td,
-    button,
-    [role="button"] {
-      border-color: ${border} !important;
+    #chatContent blockquote,
+    #chatContent table,
+    #chatContent th,
+    #chatContent td,
+    #chatContent button,
+    #chatContent [role="button"] {
+      border-color: var(--snapshot-border, rgba(148, 163, 184, 0.22)) !important;
     }
-    blockquote {
-      background: ${card} !important;
-      border-left: 3px solid ${link} !important;
+    #chatContent blockquote {
+      background: var(--snapshot-card, var(--bg-card)) !important;
+      border-left: 3px solid var(--snapshot-link, var(--accent)) !important;
       padding: 10px 12px !important;
       border-radius: 0 12px 12px 0 !important;
     }
-    table {
+    #chatContent table {
       width: 100% !important;
       border-collapse: collapse !important;
     }
-    th, td {
+    #chatContent th, #chatContent td {
       padding: 8px !important;
     }
-    img[src^="/c:"], img[src^="/C:"], img[src*="AppData"] {
+    #chatContent img[src^="/c:"], #chatContent img[src^="/C:"], #chatContent img[src*="AppData"] {
       display: none !important;
     }
     /* Disable layout sliding animations inside question radiogroups */
-    div[role="radiogroup"],
-    div[role="radiogroup"] > div,
-    label[for^="ask-opt-"] {
+    #chatContent div[role="radiogroup"],
+    #chatContent div[role="radiogroup"] > div,
+    #chatContent label[for^="ask-opt-"] {
       animation: none !important;
     }
-    label[for^="ask-opt-"] {
+    #chatContent label[for^="ask-opt-"] {
       position: relative !important;
       display: flex !important;
       align-items: center !important;
@@ -2297,27 +2289,27 @@ function buildSnapshotStyles(cssText) {
       transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease !important;
       box-sizing: border-box !important;
     }
-    label[for^="ask-opt-"]:hover {
+    #chatContent label[for^="ask-opt-"]:hover {
       background: var(--bg-card-hover, rgba(255, 255, 255, 0.08)) !important;
-      border-color: ${accent} !important;
+      border-color: var(--accent) !important;
     }
-    label[for^="ask-opt-"]:active {
+    #chatContent label[for^="ask-opt-"]:active {
       transform: scale(0.98) !important;
     }
-    label[for^="ask-opt-"].omni-selected,
-    label[for^="ask-opt-"][data-checked="true"],
-    label[for^="ask-opt-"]:has(input:checked) {
-      background: ${accentSoft} !important;
-      border-color: ${accent} !important;
-      box-shadow: 0 0 0 1.5px ${accent}, 0 4px 16px rgba(29, 155, 240, 0.25) !important;
+    #chatContent label[for^="ask-opt-"].omni-selected,
+    #chatContent label[for^="ask-opt-"][data-checked="true"],
+    #chatContent label[for^="ask-opt-"]:has(input:checked) {
+      background: var(--accent-soft) !important;
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 1.5px var(--accent), 0 4px 16px rgba(29, 155, 240, 0.25) !important;
     }
-    label[for^="ask-opt-"].omni-selected > span,
-    label[for^="ask-opt-"][data-checked="true"] > span,
-    label[for^="ask-opt-"]:has(input:checked) > span {
-      color: ${text} !important;
+    #chatContent label[for^="ask-opt-"].omni-selected > span,
+    #chatContent label[for^="ask-opt-"][data-checked="true"] > span,
+    #chatContent label[for^="ask-opt-"]:has(input:checked) > span {
+      color: var(--text-main) !important;
       font-weight: 600 !important;
     }
-    label[for^="ask-opt-"] div.shrink-0 {
+    #chatContent label[for^="ask-opt-"] div.shrink-0 {
       background: rgba(148, 163, 184, 0.15) !important;
       color: var(--text-muted, #94a3b8) !important;
       border: 1px solid rgba(148, 163, 184, 0.25) !important;
@@ -2325,27 +2317,27 @@ function buildSnapshotStyles(cssText) {
       font-weight: 600 !important;
       transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease !important;
     }
-    label[for^="ask-opt-"].omni-selected div.shrink-0,
-    label[for^="ask-opt-"][data-checked="true"] div.shrink-0,
-    label[for^="ask-opt-"]:has(input:checked) div.shrink-0 {
-      background: ${accent} !important;
-      border-color: ${accent} !important;
-      color: #ffffff !important;
+    #chatContent label[for^="ask-opt-"].omni-selected div.shrink-0,
+    #chatContent label[for^="ask-opt-"][data-checked="true"] div.shrink-0,
+    #chatContent label[for^="ask-opt-"]:has(input:checked) div.shrink-0 {
+      background: var(--accent-solid-bg, var(--accent)) !important;
+      border-color: var(--accent) !important;
+      color: var(--accent-contrast, #ffffff) !important;
       font-weight: 700 !important;
-      box-shadow: 0 0 8px ${accent} !important;
+      box-shadow: 0 0 8px var(--accent) !important;
     }
-    label[for^="ask-opt-"].omni-selected div.shrink-0 span,
-    label[for^="ask-opt-"][data-checked="true"] div.shrink-0 span,
-    label[for^="ask-opt-"]:has(input:checked) div.shrink-0 span {
-      color: #ffffff !important;
+    #chatContent label[for^="ask-opt-"].omni-selected div.shrink-0 span,
+    #chatContent label[for^="ask-opt-"][data-checked="true"] div.shrink-0 span,
+    #chatContent label[for^="ask-opt-"]:has(input:checked) div.shrink-0 span {
+      color: var(--accent-contrast, #ffffff) !important;
       font-weight: 700 !important;
     }
-    button[data-testid="interaction-continue-button"] {
+    #chatContent button[data-testid="interaction-continue-button"] {
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
-      background: ${accent} !important;
-      color: #ffffff !important;
+      background: var(--accent-solid-bg, var(--accent)) !important;
+      color: var(--accent-contrast, #ffffff) !important;
       font-weight: 600 !important;
       border-radius: 10px !important;
       padding: 10px 20px !important;
@@ -2355,12 +2347,12 @@ function buildSnapshotStyles(cssText) {
       cursor: pointer !important;
       transition: all 0.12s ease !important;
     }
-    button[data-testid="interaction-continue-button"]:active,
-    button[data-testid="interaction-continue-button"].omni-submitting {
+    #chatContent button[data-testid="interaction-continue-button"]:active,
+    #chatContent button[data-testid="interaction-continue-button"].omni-submitting {
       transform: scale(0.96) !important;
       filter: brightness(0.9) !important;
     }
-    button[data-testid="interaction-skip-button"] {
+    #chatContent button[data-testid="interaction-skip-button"] {
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
@@ -2373,7 +2365,7 @@ function buildSnapshotStyles(cssText) {
       cursor: pointer !important;
       transition: all 0.12s ease !important;
     }
-    button[data-testid="interaction-skip-button"]:active {
+    #chatContent button[data-testid="interaction-skip-button"]:active {
       transform: scale(0.96) !important;
       background: rgba(255, 255, 255, 0.06) !important;
     }
@@ -3291,7 +3283,11 @@ async function setWorkspacePanel(panel) {
 async function toggleWorkspace(force) {
   state.workspaceOpen = typeof force === 'boolean' ? force : !state.workspaceOpen;
   workspaceLayer.classList.toggle('open', state.workspaceOpen);
-  workspaceStatusText.textContent = state.workspaceOpen ? 'Open' : 'Closed';
+  chatLayout?.classList.toggle('workspace-open', state.workspaceOpen);
+  if (workspaceStatusText) {
+    workspaceStatusText.textContent = state.workspaceOpen ? 'Open' : 'Closed';
+  }
+  workspaceToggleBtn?.classList.toggle('active', state.workspaceOpen);
   if (state.workspaceOpen) {
     await setWorkspacePanel(state.activeWorkspacePanel);
   }
@@ -4200,6 +4196,7 @@ function adjustViewport() {
   const vh = window.visualViewport.height;
   document.documentElement.style.setProperty('--visual-viewport-height', `${vh}px`);
   document.body.style.height = `${vh}px`;
+  document.body.style.maxHeight = `${vh}px`;
   if (document.activeElement === messageInput) {
     ensurePromptVisible(false);
   }

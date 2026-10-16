@@ -168,6 +168,13 @@ body::before {
   background: var(--modal-backdrop);
 }
 
+@media (min-width: 768px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 24px;
+  }
+}
+
 .modal-overlay::before {
   content: "";
   position: absolute;
@@ -223,12 +230,37 @@ body::before {
   .header {
     padding: 8px 12px;
     gap: 6px;
+    min-height: 56px;
+    height: 56px;
   }
 
   .header-brand {
-    flex-shrink: 1;
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
+  }
+
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .header-brand h1 {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-subtitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    max-width: 100%;
+    font-size: 10.5px;
   }
 
   .header-controls {
@@ -247,46 +279,74 @@ body::before {
   }
 }
 
+@media (max-width: 520px) {
+  .header-plan-btn {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-title-full {
+    display: none;
+  }
+
+  .header-subtitle {
+    display: none;
+  }
+}
+
 /* Compact Mode layout overrides */
+html.compact-mode .header,
 body.compact-mode .header,
 .compact-mode .header {
   padding: 4px 10px;
   gap: 6px;
+  min-height: 48px;
+  height: 48px;
 }
 
+html.compact-mode .brand-title-short,
 body.compact-mode .brand-title-short,
 .compact-mode .brand-title-short,
+html.compact-mode .brand-title-full,
 body.compact-mode .brand-title-full,
 .compact-mode .brand-title-full,
+html.compact-mode .brand-mark h1,
 body.compact-mode .brand-mark h1,
 .compact-mode .brand-mark h1 {
   display: none !important;
 }
 
+html.compact-mode .header-subtitle,
 body.compact-mode .header-subtitle,
 .compact-mode .header-subtitle {
   display: none;
 }
 
+html.compact-mode .header-controls,
 body.compact-mode .header-controls {
   gap: 4px;
 }
 
+html.compact-mode .icon-btn,
 body.compact-mode .icon-btn {
   min-width: 28px;
   height: 28px;
   padding: 0 4px;
 }
 
+html.compact-mode .settings-bar,
 body.compact-mode .settings-bar {
   padding: 2px 8px;
   gap: 4px;
 }
 
+html.compact-mode .chat-container,
 body.compact-mode .chat-container {
   padding: 6px 10px;
 }
 
+html.compact-mode .input-section,
 body.compact-mode .input-section {
   padding-bottom: max(6px, env(safe-area-inset-bottom, 6px));
 }
