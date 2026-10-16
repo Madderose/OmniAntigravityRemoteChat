@@ -123,22 +123,26 @@ async function listProcessesLinux() {
 
 async function listProcessesWindows() {
   const script = [
-    '$items = Get-CimInstance Win32_Process |',
+    'Get-CimInstance Win32_Process |',
     "  Where-Object { $_.CommandLine -match 'language_server' } |",
-    '  Select-Object ProcessId, CommandLine',
-    '$items | ConvertTo-Json -Compress',
+    '  Select-Object ProcessId, CommandLine |',
+    '  ConvertTo-Json -Compress',
   ].join(' ');
-  const { stdout } = await execFileAsync('powershell', [
-    '-NoProfile',
-    '-Command',
-    script,
-  ]);
-  if (!stdout.trim()) return [];
-  const payload = JSON.parse(stdout);
-  const items = Array.isArray(payload) ? payload : [payload];
-  return items.map((item) =>
-    parseLanguageServerCommand(`${item.ProcessId || ''} ${item.CommandLine || ''}`)
-  );
+  try {
+    const { stdout } = await execFileAsync('powershell', [
+      '-NoProfile',
+      '-Command',
+      script,
+    ]);
+    if (!stdout || !stdout.trim()) return [];
+    const payload = JSON.parse(stdout);
+    const items = Array.isArray(payload) ? payload : [payload];
+    return items.map((item) =>
+      parseLanguageServerCommand(`${item.ProcessId || ''} ${item.CommandLine || ''}`)
+    );
+  } catch (_) {
+    return [];
+  }
 }
 
 export async function discoverLanguageServerProcesses() {
@@ -153,21 +157,25 @@ async function getListeningPortsForPid(pid) {
 
   if (process.platform === 'win32') {
     const script = [
-      `Get-NetTCPConnection -OwningProcess ${pid} -State Listen |`,
+      `Get-NetTCPConnection -OwningProcess ${pid} -State Listen -ErrorAction SilentlyContinue |`,
       '  Select-Object -ExpandProperty LocalPort |',
       '  ConvertTo-Json -Compress',
     ].join(' ');
-    const { stdout } = await execFileAsync('powershell', [
-      '-NoProfile',
-      '-Command',
-      script,
-    ]);
-    if (!stdout.trim()) return [];
-    const payload = JSON.parse(stdout);
-    const ports = (Array.isArray(payload) ? payload : [payload]).map((value) =>
-      Number.parseInt(String(value), 10)
-    );
-    return [...new Set(ports.filter(Number.isFinite))].sort((a, b) => a - b);
+    try {
+      const { stdout } = await execFileAsync('powershell', [
+        '-NoProfile',
+        '-Command',
+        script,
+      ]);
+      if (!stdout || !stdout.trim()) return [];
+      const payload = JSON.parse(stdout);
+      const ports = (Array.isArray(payload) ? payload : [payload]).map((value) =>
+        Number.parseInt(String(value), 10)
+      );
+      return [...new Set(ports.filter(Number.isFinite))].sort((a, b) => a - b);
+    } catch (_) {
+      return [];
+    }
   }
 
   let ports = [];
