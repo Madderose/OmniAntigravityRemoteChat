@@ -918,7 +918,14 @@ async function enableCdpInArgv() {
   }
 
   try {
-    const content = fs.readFileSync(argvPath, 'utf8');
+    let content = fs.readFileSync(argvPath, 'utf8');
+    if (/"remote-debugging-port":\s*\d+/.test(content)) {
+      content = content.replace(/"remote-debugging-port":\s*(\d+)/, `"remote-debugging-port": "${cdpPort}"`);
+      fs.writeFileSync(argvPath, content, 'utf8');
+      vscode.window.showInformationMessage(`Updated "remote-debugging-port" to "${cdpPort}" (string format) in ${path.basename(argvPath)}.`);
+      return;
+    }
+
     if (content.includes('"remote-debugging-port"')) {
       vscode.window.showInformationMessage(`remote-debugging-port is already configured in ${path.basename(argvPath)}.`);
       return;
@@ -926,7 +933,7 @@ async function enableCdpInArgv() {
 
     const modified = content.replace(
       /\{/,
-      `{\n\t// Chrome DevTools Protocol debugging port for OmniAntigravity Remote Chat\n\t"remote-debugging-port": ${cdpPort},`
+      `{\n\t// Chrome DevTools Protocol debugging port for OmniAntigravity Remote Chat\n\t"remote-debugging-port": "${cdpPort}",`
     );
     fs.writeFileSync(argvPath, modified, 'utf8');
 
