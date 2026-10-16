@@ -928,13 +928,13 @@ async function enableCdpInArgv() {
     fs.writeFileSync(argvPath, modified, 'utf8');
 
     const choice = await vscode.window.showInformationMessage(
-      `Configured "remote-debugging-port": ${cdpPort} in argv.json. Restart Antigravity IDE to activate CDP.`,
-      'Reload Window',
+      `Configured "remote-debugging-port": ${cdpPort} in argv.json. A full restart of Antigravity IDE is required to activate CDP (Close and reopen the application).`,
+      'Restart IDE',
       'Later'
     );
 
-    if (choice === 'Reload Window') {
-      vscode.commands.executeCommand('workbench.action.reloadWindow');
+    if (choice === 'Restart IDE') {
+      vscode.commands.executeCommand('workbench.action.quit');
     }
   } catch (err) {
     vscode.window.showErrorMessage(`Failed to update argv.json: ${err.message}`);
@@ -943,24 +943,20 @@ async function enableCdpInArgv() {
 
 /**
  * Launch an Antigravity IDE window with --remote-debugging-port=7800 portably.
+ * Note: Chromium/Electron requires this flag on the initial launch of the primary process.
  */
-function launchDebugWindow() {
-  try {
-    const config = vscode.workspace.getConfiguration('omniAntigravity');
-    const cdpPort = config.get('cdpPort') || 7800;
-    const cmdPath = resolveAntigravityCli();
+async function launchDebugWindow() {
+  const config = vscode.workspace.getConfiguration('omniAntigravity');
+  const cdpPort = config.get('cdpPort') || 7800;
 
-    const sub = spawn(cmdPath, [`--remote-debugging-port=${cdpPort}`, '--new-window'], {
-      detached: true,
-      stdio: 'ignore',
-      shell: process.platform === 'win32'
-    });
-    sub.unref();
-    vscode.window.showInformationMessage(
-      `Launched new Antigravity IDE window with --remote-debugging-port=${cdpPort}.`
-    );
-  } catch (err) {
-    vscode.window.showErrorMessage(`Failed to launch window with CDP: ${err.message}`);
+  const choice = await vscode.window.showInformationMessage(
+    `Electron requires a full restart of Antigravity IDE to open debug port ${cdpPort} (already configured in argv.json). Close and reopen Antigravity IDE to activate CDP.`,
+    'Quit & Restart Manually',
+    'Cancel'
+  );
+
+  if (choice === 'Quit & Restart Manually') {
+    vscode.commands.executeCommand('workbench.action.quit');
   }
 }
 
