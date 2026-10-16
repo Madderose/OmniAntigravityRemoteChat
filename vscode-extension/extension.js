@@ -412,7 +412,10 @@ function getActiveConnectionUrl() {
  */
 function enableTailscaleServe() {
   try {
-    execSync(`tailscale serve --bg ${state.port}`, {
+    try {
+      execSync('tailscale serve reset', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (_) {}
+    execSync(`tailscale serve --bg --yes https+insecure://127.0.0.1:${state.port}`, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe']
     });
