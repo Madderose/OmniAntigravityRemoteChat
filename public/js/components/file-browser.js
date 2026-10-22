@@ -75,8 +75,8 @@ export class FileBrowser {
   }
 
   goUp() {
-    if (this.currentPath === '.') return;
-    const parts = this.currentPath.split('/').filter(Boolean);
+    if (this.currentPath === '.' || !this.currentPath) return;
+    const parts = String(this.currentPath).split(/[\\/]+/).filter(Boolean);
     parts.pop();
     const nextPath = parts.length ? parts.join('/') : '.';
     this.loadDirectory(nextPath);

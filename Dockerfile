@@ -9,6 +9,9 @@ WORKDIR /app
 # Copy package files first for layer caching
 COPY package.json package-lock.json ./
 
+# Install runtime tools for process discovery and port management
+RUN apk add --no-cache lsof iproute2
+
 # Install production deps only
 RUN npm ci --omit=dev
 

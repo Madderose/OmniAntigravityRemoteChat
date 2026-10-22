@@ -8,6 +8,7 @@
 
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { pathToFileURL } from 'url';
 
 const DEFAULT_BIN = process.env.CLOUDFLARE_TUNNEL_BIN || 'cloudflared';
 
@@ -168,7 +169,7 @@ export class CloudflareTunnelManager extends EventEmitter {
     }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const port = Number(process.argv[2] || process.env.PORT || 4747);
     const tunnel = new CloudflareTunnelManager();
     tunnel.start(port)

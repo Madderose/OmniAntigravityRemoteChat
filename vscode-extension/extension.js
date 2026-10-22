@@ -230,42 +230,6 @@ function getHomeDir() {
 }
 
 /**
- * Resolve the Antigravity IDE CLI binary portably across platforms.
- * @returns {string}
- */
-function resolveAntigravityCli() {
-  const home = getHomeDir();
-  const localAppData = process.env.LOCALAPPDATA || (home ? path.join(home, 'AppData', 'Local') : '');
-
-  const candidates = [];
-  if (process.platform === 'win32' && localAppData) {
-    candidates.push(
-      path.join(localAppData, 'Programs', 'Antigravity IDE', 'bin', 'antigravity-ide.cmd'),
-      path.join(localAppData, 'Programs', 'Antigravity', 'bin', 'antigravity.cmd')
-    );
-  } else if (process.platform === 'darwin') {
-    candidates.push(
-      '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
-      '/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity',
-      path.join(home, 'Applications', 'Antigravity IDE.app', 'Contents', 'Resources', 'app', 'bin', 'antigravity-ide')
-    );
-  } else {
-    candidates.push(
-      '/usr/bin/antigravity-ide',
-      '/usr/local/bin/antigravity-ide',
-      path.join(home, '.local', 'bin', 'antigravity-ide')
-    );
-  }
-
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return 'antigravity-ide';
-}
-
-/**
  * Generate a high-contrast SVG QR code from a target URL.
  * @param {string} url
  * @returns {Promise<string>}

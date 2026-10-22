@@ -75,34 +75,10 @@ execSync(`npx @vscode/vsce package --out "${vsixPath}" --allow-missing-repositor
 
 console.log(`✓ Generated VSIX package: ${vsixPath}`);
 
-function resolveAntigravityCli() {
-  const home = os.homedir() || process.env.USERPROFILE || process.env.HOME || '';
-  const localAppData = process.env.LOCALAPPDATA || (home ? path.join(home, 'AppData', 'Local') : '');
-  const candidates = [];
-
-  if (process.platform === 'win32' && localAppData) {
-    candidates.push(
-      path.join(localAppData, 'Programs', 'Antigravity IDE', 'bin', 'antigravity-ide.cmd'),
-      path.join(localAppData, 'Programs', 'Antigravity', 'bin', 'antigravity.cmd')
-    );
-  } else if (process.platform === 'darwin') {
-    candidates.push(
-      '/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide',
-      path.join(home, 'Applications', 'Antigravity IDE.app', 'Contents', 'Resources', 'app', 'bin', 'antigravity-ide')
-    );
-  } else {
-    candidates.push(
-      '/usr/bin/antigravity-ide',
-      '/usr/local/bin/antigravity-ide',
-      path.join(home, '.local', 'bin', 'antigravity-ide')
-    );
-  }
-
-  return candidates.find((p) => p && fs.existsSync(p)) || '';
-}
+import { resolveAntigravityBinary } from '../src/utils/process.js';
 
 // 4. Install into Antigravity IDE
-const antigravityCmd = resolveAntigravityCli();
+const antigravityCmd = resolveAntigravityBinary({ preferCliWrapper: true });
 if (antigravityCmd) {
   console.log('▸ Installing extension into Antigravity IDE...');
   execSync(`"${antigravityCmd}" --install-extension "${vsixPath}" --force`, {

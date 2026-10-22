@@ -1,4 +1,32 @@
 {
-  "updatedAt": "2026-10-16T16:03:39.669Z",
-  "entries": []
+  "updatedAt": "2026-10-16T17:56:55.807Z",
+  "entries": [
+    {
+      "filename": "2026-10-16T17-56-47-431Z--yi7on1.jpg",
+      "capturedAt": "2026-10-16T17:56:47.431Z",
+      "reason": "smoke-test",
+      "sizeBytes": 196026,
+      "mimeType": "image/jpeg",
+      "snapshotHash": "cbzmlu",
+      "contentHash": "-yi7on1"
+    },
+    {
+      "filename": "2026-10-16T17-55-31-952Z--nwwlg2.jpg",
+      "capturedAt": "2026-10-16T17:55:31.952Z",
+      "reason": "smoke-test",
+      "sizeBytes": 195423,
+      "mimeType": "image/jpeg",
+      "snapshotHash": "m5nfqt",
+      "contentHash": "-nwwlg2"
+    },
+    {
+      "filename": "2026-10-16T17-29-54-075Z-2i4gcp.jpg",
+      "capturedAt": "2026-10-16T17:29:54.075Z",
+      "reason": "smoke-test",
+      "sizeBytes": 123590,
+      "mimeType": "image/jpeg",
+      "snapshotHash": "iu1wwi",
+      "contentHash": "2i4gcp"
+    }
+  ]
 }

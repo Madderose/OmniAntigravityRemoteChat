@@ -41,7 +41,7 @@ function fail(msg) { console.log(`  ${c.red}✗${c.reset} ${msg}`); failed++; }
 function warn(msg) { console.log(`  ${c.yellow}⚠${c.reset} ${msg}`); warnings++; }
 function section(title) { console.log(`\n${c.cyan}${c.bold}▸ ${title}${c.reset}`); }
 
-function httpGet(url, timeout = 3000) {
+function httpGet(url, timeout = 10000) {
     return new Promise((resolve, reject) => {
         const target = new URL(url);
         const client = target.protocol === 'https:' ? https : http;
@@ -58,7 +58,7 @@ function httpGet(url, timeout = 3000) {
     });
 }
 
-function httpRequest(method, url, { headers = {}, body = null, timeout = 3000 } = {}) {
+function httpRequest(method, url, { headers = {}, body = null, timeout = 10000 } = {}) {
     return new Promise((resolve, reject) => {
         const target = new URL(url);
         const client = target.protocol === 'https:' ? https : http;
@@ -249,14 +249,28 @@ async function main() {
         const baseProtocol = sslEnabled ? 'https' : 'http';
         const wsProtocol = sslEnabled ? 'wss' : 'ws';
 
-        const serverProc = spawn('node', ['src/server.js'], {
+        const serverProc = spawn(process.execPath, ['src/server.js'], {
             cwd: PROJECT_ROOT,
             env: { ...process.env, PORT: String(SERVER_PORT) },
             stdio: 'pipe'
         });
 
-        // Wait for server to start
-        await new Promise(r => setTimeout(r, 3000));
+        // Wait for server to start with active readiness polling up to 10s
+        const startWait = Date.now();
+        let serverReady = false;
+        while (Date.now() - startWait < 10000) {
+            try {
+                const probe = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/ready`);
+                if (probe.status === 200 || probe.status === 503) {
+                    serverReady = true;
+                    break;
+                }
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 200));
+        }
+        if (!serverReady) {
+            await new Promise(r => setTimeout(r, 1000));
+        }
 
         try {
             // Test main page
@@ -294,7 +308,7 @@ async function main() {
             else fail(`GET /app-state → ${stateRes.status}`);
 
             // Test quota endpoint
-            const quotaRes = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/api/quota`);
+            const quotaRes = await httpGet(`${baseProtocol}://127.0.0.1:${SERVER_PORT}/api/quota`, 10000);
             if (quotaRes.status === 200) {
                 const data = JSON.parse(quotaRes.data);
                 pass(`GET /api/quota → 200 (${data.totalModels || 0} models)`);

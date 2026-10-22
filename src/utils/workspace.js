@@ -50,6 +50,30 @@ const DEFAULT_QUICK_COMMANDS = [
 ];
 
 /**
+ * Convert any file path to POSIX format with forward slashes.
+ * Ensures Windows drive letters are consistently capitalized (e.g. C:/).
+ *
+ * @param {string} filePath
+ * @returns {string}
+ */
+export function toPosix(filePath) {
+    if (!filePath) return '';
+    const posix = String(filePath).replace(/\\/g, '/');
+    return posix.replace(/^([a-z]):\//, (_, drive) => `${drive.toUpperCase()}:/`);
+}
+
+/**
+ * Normalizes Windows drive letter to uppercase to prevent false realpath mismatches.
+ *
+ * @param {string} filePath
+ * @returns {string}
+ */
+function normalizeDriveLetter(filePath) {
+    if (process.platform !== 'win32' || !filePath) return filePath;
+    return String(filePath).replace(/^([a-z]):/, (_, drive) => `${drive.toUpperCase()}:`);
+}
+
+/**
  * Ensure a path stays inside the configured workspace.
  *
  * @param {string} inputPath
@@ -57,24 +81,25 @@ const DEFAULT_QUICK_COMMANDS = [
  */
 export function resolveWorkspacePath(inputPath = '.') {
     const normalized = inputPath || '.';
-    const absolute = resolve(WORKSPACE_ROOT, normalized);
-    const rootWithSep = WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}${sep}`;
+    const normalizedRoot = normalizeDriveLetter(WORKSPACE_ROOT);
+    const absolute = normalizeDriveLetter(resolve(normalizedRoot, normalized));
+    const rootWithSep = normalizedRoot.endsWith(sep) ? normalizedRoot : `${normalizedRoot}${sep}`;
 
-    if (absolute !== WORKSPACE_ROOT && !absolute.startsWith(rootWithSep)) {
+    if (absolute !== normalizedRoot && !absolute.startsWith(rootWithSep)) {
         throw new Error('Requested path escapes the configured workspace root');
     }
 
-    let realRoot = WORKSPACE_ROOT;
+    let realRoot = normalizedRoot;
     try {
-        realRoot = fs.realpathSync(WORKSPACE_ROOT);
+        realRoot = normalizeDriveLetter(fs.realpathSync(normalizedRoot));
     } catch {
-        realRoot = WORKSPACE_ROOT;
+        realRoot = normalizedRoot;
     }
     const realRootWithSep = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`;
 
     if (fs.existsSync(absolute)) {
         try {
-            const realAbsolute = fs.realpathSync(absolute);
+            const realAbsolute = normalizeDriveLetter(fs.realpathSync(absolute));
             if (realAbsolute !== realRoot && !realAbsolute.startsWith(realRootWithSep)) {
                 throw new Error('Requested path escapes the configured workspace root');
             }
@@ -88,7 +113,7 @@ export function resolveWorkspacePath(inputPath = '.') {
         while (ancestor && ancestor !== dirname(ancestor)) {
             if (fs.existsSync(ancestor)) {
                 try {
-                    const realAncestor = fs.realpathSync(ancestor);
+                    const realAncestor = normalizeDriveLetter(fs.realpathSync(ancestor));
                     if (realAncestor !== realRoot && !realAncestor.startsWith(realRootWithSep)) {
                         throw new Error('Requested path escapes the configured workspace root');
                     }
@@ -103,7 +128,8 @@ export function resolveWorkspacePath(inputPath = '.') {
         }
     }
 
-    const relativePath = absolute === WORKSPACE_ROOT ? '.' : relative(WORKSPACE_ROOT, absolute) || '.';
+    const rawRelative = absolute === normalizedRoot ? '.' : relative(normalizedRoot, absolute) || '.';
+    const relativePath = toPosix(rawRelative);
     return { absolute, relativePath };
 }
 
@@ -181,7 +207,7 @@ export async function listWorkspace(pathLike = '.') {
     const mapped = await Promise.all(entries.map(async (entry) => {
         const absoluteEntry = join(absolute, entry.name);
         const stat = await fsp.lstat(absoluteEntry);
-        const rel = relative(WORKSPACE_ROOT, absoluteEntry) || '.';
+        const rel = toPosix(relative(WORKSPACE_ROOT, absoluteEntry) || '.');
         const type = entry.isDirectory() ? 'directory' : entry.isSymbolicLink() ? 'symlink' : 'file';
 
         return {
@@ -203,9 +229,9 @@ export async function listWorkspace(pathLike = '.') {
     });
 
     return {
-        root: WORKSPACE_ROOT,
+        root: toPosix(WORKSPACE_ROOT),
         path: relativePath,
-        parent: relativePath === '.' ? null : dirname(relativePath),
+        parent: relativePath === '.' ? null : toPosix(dirname(relativePath)),
         entries: mapped
     };
 }
@@ -235,7 +261,7 @@ export async function readWorkspaceFile(pathLike) {
         }
 
         return {
-            root: WORKSPACE_ROOT,
+            root: toPosix(WORKSPACE_ROOT),
             path: relativePath,
             size: stat.size,
             truncated: stat.size > MAX_FILE_BYTES,
@@ -279,8 +305,8 @@ function execGit(args) {
  */
 function parseGitStatusLine(line) {
     const status = line.slice(0, 2).trim() || '??';
-    const path = line.slice(3).trim();
-    return { path, status };
+    const rawPath = line.slice(3).trim();
+    return { path: toPosix(rawPath), status };
 }
 
 /**
@@ -296,7 +322,7 @@ export async function getGitSummary() {
         execGit(['log', '-1', '--oneline'])
     ]);
 
-    const lines = statusOut.trim().split('\n').filter(Boolean);
+    const lines = statusOut.trim().split(/\r?\n/).filter(Boolean);
     const branchLine = lines.shift() || '## detached';
     const branchMatch = branchLine.match(/^##\s+([^\.\s]+)(?:\.\.\.[^\s]+)?(?:\s+\[ahead\s+(\d+)\])?(?:,\s+behind\s+(\d+))?/);
     const branch = branchMatch?.[1] || branchLine.replace(/^##\s*/, '');
@@ -663,7 +689,7 @@ export class TerminalManager extends EventEmitter {
         this.process = spawn(shell, args, {
             cwd: WORKSPACE_ROOT,
             detached: process.platform !== 'win32',
-            env: { ...process.env, FORCE_COLOR: '0' }
+            env: { ...process.env, FORCE_COLOR: '0', PYTHONIOENCODING: 'utf-8' }
         });
 
         this.pushLog('system', `$ ${this.command}`);
@@ -700,7 +726,7 @@ export class TerminalManager extends EventEmitter {
         try {
             if (process.platform === 'win32') {
                 if (pid) {
-                    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => {});
+                    await new Promise((res) => execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => res(null)));
                 }
             } else if (pid) {
                 try {
@@ -747,13 +773,14 @@ export function extractMarkdownTitle(content, fallback = 'Document') {
  */
 export function deriveWorkspaceNameFromPath(filePath, content = '') {
     if (!filePath) return 'Antigravity Workspace';
-    if (filePath.includes('/Projet_Cholet/')) return 'Projet_Cholet';
-    if (filePath.includes('/OmniAntigravityRemoteChat/')) return 'OmniAntigravityRemoteChat';
+    const posixPath = toPosix(filePath);
+    if (posixPath.includes('/Projet_Cholet/')) return 'Projet_Cholet';
+    if (posixPath.includes('/OmniAntigravityRemoteChat/')) return 'OmniAntigravityRemoteChat';
     if (content) {
         const titleMatch = content.match(/TICKET-([A-Z0-9]+)-/i);
         if (titleMatch) return 'OmniAntigravity';
     }
-    const parts = filePath.split('/');
+    const parts = posixPath.split('/');
     for (let i = 0; i < parts.length; i++) {
         if (parts[i] === 'brain' && i > 0 && parts[i+1]) {
             return 'Conversation ' + parts[i+1].slice(0, 8);

@@ -79,10 +79,11 @@ export function normalizeModelName(modelId, fallbackLabel = '') {
 }
 
 function readFlagValue(commandLine, flag) {
+  const escapedFlag = flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = String(commandLine || '').match(
-    new RegExp(`(?:^|\\s)${flag}\\s+([^\\s]+)`)
+    new RegExp(`(?:^|\\s)${escapedFlag}(?:=|\\s+)(?:"([^"]+)"|'([^']+)'|([^\\s"']+))`)
   );
-  return match ? match[1] : '';
+  return match ? (match[1] || match[2] || match[3] || '') : '';
 }
 
 export function parseLanguageServerCommand(commandLine) {
@@ -110,8 +111,26 @@ function parseListeningPort(line) {
   return match ? Number.parseInt(match[1], 10) : null;
 }
 
-async function listProcessesLinux() {
-  const { stdout } = await execFileAsync('ps', ['-eo', 'pid=,args=']);
+async function listProcessesPosix() {
+  let stdout = '';
+  if (process.platform === 'darwin') {
+    try {
+      const res = await execFileAsync('ps', ['-eo', 'pid=,command=', '-ww']);
+      stdout = res.stdout;
+    } catch {
+      const res = await execFileAsync('ps', ['-eo', 'pid=,command=']);
+      stdout = res.stdout;
+    }
+  } else {
+    try {
+      const res = await execFileAsync('ps', ['-eo', 'pid=,args=', '-ww']);
+      stdout = res.stdout;
+    } catch {
+      const res = await execFileAsync('ps', ['-eo', 'pid=,args=']);
+      stdout = res.stdout;
+    }
+  }
+
   return stdout
     .split('\n')
     .map((line) => line.trim())
@@ -123,14 +142,18 @@ async function listProcessesLinux() {
 
 async function listProcessesWindows() {
   const script = [
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;',
     'Get-CimInstance Win32_Process |',
-    "  Where-Object { $_.CommandLine -match 'language_server' } |",
+    "  Where-Object { $_.CommandLine -match 'language_server' -and $_.Name -notmatch 'powershell' } |",
     '  Select-Object ProcessId, CommandLine |',
     '  ConvertTo-Json -Compress',
   ].join(' ');
   try {
     const { stdout } = await execFileAsync('powershell', [
       '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
       '-Command',
       script,
     ]);
@@ -149,7 +172,7 @@ export async function discoverLanguageServerProcesses() {
   if (process.platform === 'win32') {
     return listProcessesWindows();
   }
-  return listProcessesLinux();
+  return listProcessesPosix();
 }
 
 async function getListeningPortsForPid(pid) {
@@ -157,6 +180,7 @@ async function getListeningPortsForPid(pid) {
 
   if (process.platform === 'win32') {
     const script = [
+      '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;',
       `Get-NetTCPConnection -OwningProcess ${pid} -State Listen -ErrorAction SilentlyContinue |`,
       '  Select-Object -ExpandProperty LocalPort |',
       '  ConvertTo-Json -Compress',
@@ -164,6 +188,9 @@ async function getListeningPortsForPid(pid) {
     try {
       const { stdout } = await execFileAsync('powershell', [
         '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
         '-Command',
         script,
       ]);
@@ -180,35 +207,52 @@ async function getListeningPortsForPid(pid) {
 
   let ports = [];
 
-  try {
-    const { stdout } = await execFileAsync('ss', ['-ltnp']);
-    ports = stdout
-      .split('\n')
-      .filter((line) => line.includes(`pid=${pid}`))
-      .map((line) => parseListeningPort(line))
-      .filter((value) => Number.isFinite(value));
-  } catch (_) {
-    const { stdout } = await execFileAsync('lsof', [
-      '-Pan',
-      '-p',
-      String(pid),
-      '-iTCP',
-      '-sTCP:LISTEN',
-    ]);
-    ports = stdout
-      .split('\n')
-      .map((line) => parseListeningPort(line))
-      .filter((value) => Number.isFinite(value));
+  if (process.platform !== 'darwin') {
+    try {
+      const { stdout } = await execFileAsync('ss', ['-ltnp']);
+      ports = stdout
+        .split('\n')
+        .filter((line) => line.includes(`pid=${pid}`))
+        .map((line) => parseListeningPort(line))
+        .filter((value) => Number.isFinite(value));
+    } catch (_) {
+      // ss may not be available or permitted
+    }
+  }
+
+  if (ports.length === 0) {
+    try {
+      const { stdout } = await execFileAsync('lsof', [
+        '-Pan',
+        '-p',
+        String(pid),
+        '-iTCP',
+        '-sTCP:LISTEN',
+      ]);
+      ports = stdout
+        .split('\n')
+        .map((line) => parseListeningPort(line))
+        .filter((value) => Number.isFinite(value));
+    } catch (_) {
+      // lsof may exit 1 if no sockets listening or tool not installed
+    }
   }
 
   return [...new Set(ports)].sort((a, b) => a - b);
 }
 
 export function getCsrfTokenCandidatePaths() {
+  const home = os.homedir() || process.env.USERPROFILE || process.env.HOME || '';
+  const xdgConfig = process.env.XDG_CONFIG_HOME || join(home, '.config');
+  const appData = process.env.APPDATA || join(home, 'AppData', 'Roaming');
+
   return [
-    join(os.homedir(), '.antigravity', 'data', 'machineid'),
-    join(os.homedir(), '.config', 'Antigravity', 'User', 'machineid'),
-    join(os.homedir(), 'AppData', 'Roaming', 'Antigravity', 'User', 'machineid'),
+    join(home, '.antigravity', 'data', 'machineid'),
+    join(xdgConfig, 'Antigravity', 'User', 'machineid'),
+    join(appData, 'Antigravity', 'User', 'machineid'),
+    join(home, 'Library', 'Application Support', 'Antigravity', 'User', 'machineid'),
+    join(home, 'Library', 'Application Support', 'Antigravity IDE', 'User', 'machineid'),
+    join(home, 'Library', 'Application Support', 'Google', 'Antigravity', 'User', 'machineid'),
   ];
 }
 

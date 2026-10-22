@@ -8,6 +8,7 @@
 
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { pathToFileURL } from 'url';
 
 const DEFAULT_BIN = process.env.PINGGY_SSH_BIN || 'ssh';
 const DEFAULT_HOST = process.env.PINGGY_HOST || 'a.pinggy.io';
@@ -67,7 +68,8 @@ export class PinggyTunnelManager extends EventEmitter {
     static async cleanupOrphans() {
         try {
             if (process.platform === 'win32') {
-                spawn('taskkill', ['/F', '/IM', 'ssh.exe'], { stdio: 'ignore' });
+                const script = 'Get-CimInstance Win32_Process -Filter "Name = \'ssh.exe\'" | Where-Object { $_.CommandLine -match "pinggy" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }';
+                spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], { stdio: 'ignore' });
             } else {
                 spawn('pkill', ['-f', 'ssh.*a.pinggy.io'], { stdio: 'ignore' });
             }
@@ -206,7 +208,7 @@ export class PinggyTunnelManager extends EventEmitter {
     }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
     const port = Number(process.argv[2] || process.env.PORT || 4747);
     const tunnel = new PinggyTunnelManager();
     tunnel.start(port)
